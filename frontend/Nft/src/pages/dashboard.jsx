@@ -4,6 +4,7 @@ import {
   FiSearch,
   FiTrendingUp,
 } from "react-icons/fi";
+import Topbar from "../components/topbar";
 
 import { trendingNFTs, recentActivity } from "../nft data/nftdata";
 
@@ -11,7 +12,7 @@ function Dashboard() {
   return (
     <div className="min-h-screen bg-[#08080f] text-white">
       
-
+<Topbar />
       {/* Main content */}
       <main className="p-5 lg:p-7">
 

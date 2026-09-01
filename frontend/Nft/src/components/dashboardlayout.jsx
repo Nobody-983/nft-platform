@@ -1,6 +1,5 @@
 import { Outlet } from "react-router-dom";
 import Sidebar from "../components/sidebar";
-import Topbar from "../components/topbar";
 
 function DashboardLayout() {
   return (
@@ -9,7 +8,7 @@ function DashboardLayout() {
       <Sidebar />
 
       <div className="ml-64">
-        <Topbar />
+        {/* <Topbar /> */}
 
         <main>
           <Outlet />
