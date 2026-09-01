@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -32,9 +31,7 @@ const navigation = [
   },
 ];
 
-function Sidebar() {
-  const [isOpen, setIsOpen] = useState(true);
-
+function Sidebar({ isOpen, setIsOpen }) {
   return (
     <>
       {/* Mobile menu button */}
@@ -45,7 +42,7 @@ function Sidebar() {
         {isOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
 
-      {/* Overlay on mobile */}
+      {/* Mobile overlay */}
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
@@ -55,19 +52,39 @@ function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-white/10 bg-[#0b0b12] px-5 py-6 text-white transition-transform duration-300 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0`}
+        className={`
+          fixed left-0 top-0 z-40
+          flex h-screen flex-col
+          border-r border-white/10
+          bg-[#0b0b12]
+          px-5 py-6
+          text-white
+          transition-all duration-300
+
+          ${
+            isOpen
+              ? "w-64 translate-x-0"
+              : "w-20 -translate-x-0 px-3"
+          }
+
+          lg:translate-x-0
+        `}
       >
         {/* Logo */}
-        <div className="mb-10 px-3">
+        <div
+          className={`mb-10 transition-all ${
+            isOpen ? "px-3" : "px-0 text-center"
+          }`}
+        >
           <h1 className="text-2xl font-bold">
-            Nimiq
+            {isOpen ? "Nimiq" : "N"}
           </h1>
 
-          <p className="mt-1 text-xs text-gray-500">
-            NFT ecosystem
-          </p>
+          {isOpen && (
+            <p className="mt-1 text-xs text-gray-500">
+              NFT ecosystem
+            </p>
+          )}
         </div>
 
         {/* Navigation */}
@@ -80,21 +97,46 @@ function Sidebar() {
                 key={item.name}
                 to={item.path}
                 end={item.path === "/"}
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  if (window.innerWidth < 1024) {
+                    setIsOpen(false);
+                  }
+                }}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
+                  `
+                  flex items-center
+                  rounded-xl
+                  py-3
+                  text-sm font-medium
+                  transition-all
+
+                  ${isOpen ? "gap-3 px-4" : "justify-center px-2"}
+
+                  ${
                     isActive
                       ? "bg-purple-600 text-white"
                       : "text-gray-400 hover:bg-white/[0.05] hover:text-white"
-                  }`
+                  }
+                  `
                 }
               >
                 <Icon size={19} />
-                <span>{item.name}</span>
+
+                {isOpen && (
+                  <span>{item.name}</span>
+                )}
               </NavLink>
             );
           })}
         </nav>
+
+        {/* Desktop collapse button */}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="hidden items-center justify-center rounded-xl p-3 text-gray-400 transition hover:bg-white/5 hover:text-white lg:flex"
+        >
+          {isOpen ? <X size={19} /> : <Menu size={19} />}
+        </button>
       </aside>
     </>
   );

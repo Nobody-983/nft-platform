@@ -1,80 +1,218 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  FiBell,
   FiHeart,
-  FiSearch,
   FiTrendingUp,
+  FiChevronLeft,
+  FiChevronRight,
 } from "react-icons/fi";
-import Topbar from "../components/topbar";
 
+import Topbar from "../components/topbar";
 import { trendingNFTs, recentActivity } from "../nft data/nftdata";
 
+const heroSlides = [
+  {
+    id: 1,
+    tag: "THE FUTURE OF DIGITAL OWNERSHIP",
+    title: "Discover, collect and own",
+    highlight: "digital treasures",
+    description:
+      "Buy, sell and create NFTs across art, music, gaming and more.",
+    image:
+      "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?auto=format&fit=crop&w=900&q=80",
+  },
+  {
+    id: 2,
+    tag: "DIGITAL ART",
+    title: "Own something",
+    highlight: "truly unique",
+    description:
+      "Discover unique digital artwork from creators around the world.",
+    image:
+      "https://images.unsplash.com/photo-1634986666676-ec8fd927c23d?auto=format&fit=crop&w=900&q=80",
+  },
+  {
+    id: 3,
+    tag: "COLLECT. CREATE. EARN.",
+    title: "Your digital world",
+    highlight: "starts here",
+    description:
+      "Explore collectibles, discover creators and build your collection.",
+    image:
+      "https://images.unsplash.com/photo-1618005198919-d3d4b5a92ead?auto=format&fit=crop&w=900&q=80",
+  },
+];
+
 function Dashboard() {
+  const navigate = useNavigate();
+
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  // Automatically change slide
+  useEffect(() => {
+    const slider = setInterval(() => {
+      setCurrentSlide((prev) =>
+        prev === heroSlides.length - 1 ? 0 : prev + 1
+      );
+    }, 5000);
+
+    return () => clearInterval(slider);
+  }, []);
+
+  const nextSlide = () => {
+    setCurrentSlide((prev) =>
+      prev === heroSlides.length - 1 ? 0 : prev + 1
+    );
+  };
+
+  const previousSlide = () => {
+    setCurrentSlide((prev) =>
+      prev === 0 ? heroSlides.length - 1 : prev - 1
+    );
+  };
+
+  const slide = heroSlides[currentSlide];
+
   return (
     <div className="min-h-screen bg-[#08080f] text-white">
-      
-<Topbar />
-      {/* Main content */}
+      <Topbar />
+
       <main className="p-5 lg:p-7">
 
         {/* ================= HERO ================= */}
-        <section className="relative overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#250047] via-[#17002e] to-[#090914] p-7 lg:p-10">
 
-          {/* Glow effects */}
-          <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-purple-600/20 blur-3xl" />
-          <div className="absolute -bottom-20 right-20 h-52 w-52 rounded-full bg-pink-600/10 blur-3xl" />
+        <section className="relative min-h-[420px] overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#250047] via-[#17002e] to-[#090914]">
 
-          <div className="relative z-10 max-w-xl">
+          {/* Background glow */}
+          <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-purple-600/20 blur-3xl" />
 
-            <p className="mb-3 text-sm font-medium text-purple-400">
-              THE FUTURE OF DIGITAL OWNERSHIP
-            </p>
+          <div className="absolute -bottom-20 right-40 h-64 w-64 rounded-full bg-pink-600/10 blur-3xl" />
 
-            <h1 className="text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
-              Discover, collect and own{" "}
-              <span className="bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
-                digital treasures
-              </span>
-            </h1>
+          {/* Slide content */}
+          <div
+            key={slide.id}
+            className="relative z-10 flex min-h-[420px] items-center p-7 lg:p-10"
+          >
 
-            <p className="mt-5 max-w-lg text-sm leading-6 text-gray-400 sm:text-base">
-              Buy, sell and create NFTs across art, music, gaming and more.
-            </p>
+            {/* Text */}
+            <div className="max-w-xl">
 
-            <div className="mt-7 flex flex-wrap gap-3">
-              <button className="rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-500 px-6 py-3 text-sm font-semibold transition hover:scale-105">
-                Explore Market
-              </button>
+              <p className="mb-3 text-sm font-medium tracking-wide text-purple-400">
+                {slide.tag}
+              </p>
 
-              <button className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold transition hover:bg-white/10">
-                Create Now
-              </button>
+              <h1 className="text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
+                {slide.title}{" "}
+                <span className="bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
+                  {slide.highlight}
+                </span>
+              </h1>
+
+              <p className="mt-5 max-w-lg text-sm leading-6 text-gray-400 sm:text-base">
+                {slide.description}
+              </p>
+
+              {/* Buttons */}
+              <div className="mt-7 flex flex-wrap gap-3">
+
+                <button
+                  onClick={() => navigate("/marketplace")}
+                  className="rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-500 px-6 py-3 text-sm font-semibold transition hover:scale-105 hover:shadow-lg hover:shadow-purple-500/20"
+                >
+                  Explore Market
+                </button>
+
+                <button
+                  onClick={() => navigate("/create")}
+                  className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold transition hover:bg-white/10"
+                >
+                  Create Now
+                </button>
+
+              </div>
+
             </div>
 
-          </div>
 
-          {/* Hero artwork */}
-          <div className="absolute right-5 top-1/2 hidden h-64 w-64 -translate-y-1/2 md:block lg:right-14 lg:h-72 lg:w-72">
+            {/* ================= SLIDING NFT IMAGE ================= */}
 
-            <div className="absolute inset-5 rotate-6 rounded-3xl bg-gradient-to-br from-purple-500/30 to-pink-500/20 blur-xl" />
+            <div className="absolute right-8 top-1/2 hidden h-72 w-72 -translate-y-1/2 md:block lg:right-16 lg:h-80 lg:w-80">
 
-            <div className="relative flex h-full w-full rotate-6 items-center justify-center rounded-3xl border border-purple-400/30 bg-gradient-to-br from-purple-500/30 via-blue-500/10 to-pink-500/20 backdrop-blur-xl shadow-2xl">
+              {/* Glow */}
+              <div className="absolute inset-4 rounded-3xl bg-purple-600/30 blur-3xl" />
 
-              <div className="h-32 w-32 rotate-12 rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-cyan-400/30 via-purple-500/40 to-fuchsia-500/30 shadow-[0_0_60px_rgba(139,92,246,0.5)] lg:h-40 lg:w-40" />
+              {/* Image card */}
+              <div className="relative h-full w-full rotate-6 overflow-hidden rounded-3xl border border-purple-400/30 bg-[#111119] shadow-2xl shadow-purple-900/40">
+
+                <img
+                  src={slide.image}
+                  alt={slide.highlight}
+                  className="h-full w-full object-cover transition-all duration-700"
+                />
+
+                {/* Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+
+                {/* NFT label */}
+                <div className="absolute bottom-4 left-4">
+
+                  <p className="text-xs text-gray-300">
+                    Featured NFT
+                  </p>
+
+                  <p className="mt-1 text-sm font-semibold">
+                    {slide.highlight}
+                  </p>
+
+                </div>
+
+              </div>
 
             </div>
-          </div>
 
-          {/* Slider dots */}
-          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-            <span className="h-2 w-2 rounded-full bg-purple-400" />
-            <span className="h-2 w-2 rounded-full bg-white/30" />
-            <span className="h-2 w-2 rounded-full bg-white/30" />
+
+            {/* ================= SLIDER CONTROLS ================= */}
+
+            <button
+              onClick={previousSlide}
+              className="absolute left-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur transition hover:bg-black/60"
+            >
+              <FiChevronLeft size={18} />
+            </button>
+
+            <button
+              onClick={nextSlide}
+              className="absolute right-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur transition hover:bg-black/60"
+            >
+              <FiChevronRight size={18} />
+            </button>
+
+
+            {/* ================= SLIDER DOTS ================= */}
+
+            <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 gap-2">
+
+              {heroSlides.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentSlide(index)}
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    currentSlide === index
+                      ? "w-6 bg-purple-400"
+                      : "w-2 bg-white/30 hover:bg-white/50"
+                  }`}
+                />
+              ))}
+
+            </div>
+
           </div>
 
         </section>
 
 
         {/* ================= TRENDING ================= */}
+
         <section className="mt-8">
 
           <div className="mb-4 flex items-center justify-between">
@@ -87,7 +225,10 @@ function Dashboard() {
               </h2>
             </div>
 
-            <button className="text-sm font-medium text-purple-400 hover:text-purple-300">
+            <button
+              onClick={() => navigate("/marketplace")}
+              className="text-sm font-medium text-purple-400 hover:text-purple-300"
+            >
               View all
             </button>
 
@@ -97,7 +238,10 @@ function Dashboard() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
             {trendingNFTs.map((nft) => (
-              <NFTCard key={nft.id} nft={nft} />
+              <NFTCard
+                key={nft.id}
+                nft={nft}
+              />
             ))}
 
           </div>
@@ -106,6 +250,7 @@ function Dashboard() {
 
 
         {/* ================= LOWER DASHBOARD ================= */}
+
         <section className="mt-8 grid gap-5 lg:grid-cols-2">
 
           <MarketOverview />
@@ -125,11 +270,9 @@ function Dashboard() {
 ===================================================== */
 
 function NFTCard({ nft }) {
-
   return (
     <article className="group overflow-hidden rounded-xl border border-white/5 bg-[#101017] transition duration-300 hover:-translate-y-1 hover:border-purple-500/30">
 
-      {/* Image */}
       <div className="relative aspect-square overflow-hidden">
 
         <img
@@ -138,23 +281,18 @@ function NFTCard({ nft }) {
           className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
         />
 
-        {/* Dark overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
 
-        {/* Rank */}
         <div className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-md bg-black/60 text-xs font-bold backdrop-blur">
           {nft.rank}
         </div>
 
-        {/* Heart */}
         <button className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 backdrop-blur transition hover:bg-black/80">
           <FiHeart size={15} />
         </button>
 
       </div>
 
-
-      {/* Content */}
       <div className="p-3">
 
         <h3 className="truncate text-sm font-semibold">
@@ -195,7 +333,6 @@ function NFTCard({ nft }) {
 ===================================================== */
 
 function MarketOverview() {
-
   return (
     <div className="rounded-xl border border-white/5 bg-[#101017] p-5">
 
@@ -227,8 +364,6 @@ function MarketOverview() {
 
       </div>
 
-
-      {/* Chart */}
       <div className="relative mt-6 h-44 overflow-hidden rounded-lg">
 
         <div className="absolute inset-0 bg-gradient-to-t from-purple-600/10 to-transparent" />
@@ -238,14 +373,6 @@ function MarketOverview() {
           className="absolute inset-0 h-full w-full"
           preserveAspectRatio="none"
         >
-
-          <defs>
-            <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopOpacity="0.4" />
-              <stop offset="100%" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
           <path
             d="M0 120 C30 100 45 115 70 95 C100 70 110 110 135 90 C165 65 180 105 205 80 C230 55 250 105 275 85 C300 70 315 100 340 55 C365 15 380 70 405 35 C430 10 445 55 470 25 C485 10 495 30 500 15"
             fill="none"
@@ -253,11 +380,9 @@ function MarketOverview() {
             strokeWidth="3"
             className="text-purple-500"
           />
-
         </svg>
 
       </div>
-
 
       <div className="mt-5 grid grid-cols-3 gap-4">
 
@@ -291,10 +416,8 @@ function MarketOverview() {
 ===================================================== */
 
 function Stat({ label, value, change }) {
-
   return (
     <div>
-
       <p className="text-xs text-gray-500">
         {label}
       </p>
@@ -306,7 +429,6 @@ function Stat({ label, value, change }) {
       <p className="mt-1 text-xs text-green-400">
         {change}
       </p>
-
     </div>
   );
 }
@@ -317,7 +439,6 @@ function Stat({ label, value, change }) {
 ===================================================== */
 
 function RecentActivity() {
-
   return (
     <div className="rounded-xl border border-white/5 bg-[#101017] p-5">
 
@@ -332,7 +453,6 @@ function RecentActivity() {
         </button>
 
       </div>
-
 
       <div className="space-y-1">
 
@@ -355,6 +475,7 @@ function RecentActivity() {
                   <span className="font-medium">
                     {activity.user}
                   </span>{" "}
+
                   <span className="text-gray-500">
                     {activity.action}
                   </span>
@@ -383,6 +504,5 @@ function RecentActivity() {
     </div>
   );
 }
-
 
 export default Dashboard;
