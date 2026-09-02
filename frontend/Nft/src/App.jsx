@@ -5,6 +5,8 @@ import { supabase } from "./lib/supabase";
 
 import DashboardLayout from "./components/dashboardlayout";
 
+import NFTDetails from "./pages/nftDetails";
+
 import Dashboard from "./pages/dashboard";
 import Marketplace from "./pages/market";
 import Wallet from "./pages/wallet";
@@ -102,6 +104,7 @@ function AppContent() {
           path="/create-nft"
           element={<CreateNFT user={user} />}
         />
+        <Route path="/nft/:id" element={<NFTDetails />} />
       </Route>
     </Routes>
   );
