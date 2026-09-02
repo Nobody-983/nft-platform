@@ -12,7 +12,16 @@ function DashboardLayout() {
         setIsOpen={setSidebarOpen}
       />
 
-      <main className="min-w-0 flex-1 pt-6 lg:pt-8">
+      <main
+        className={`
+          min-h-screen
+          pt-16
+          transition-all
+          duration-300
+          lg:pt-6
+          ${sidebarOpen ? "lg:pl-72" : "lg:pl-24"}
+        `}
+      >
         <Outlet />
       </main>
     </div>
