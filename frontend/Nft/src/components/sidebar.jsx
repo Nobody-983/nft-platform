@@ -6,18 +6,24 @@ import {
   User,
   Menu,
   X,
+  PlusSquare,
 } from "lucide-react";
 
 const navigation = [
   {
     name: "Dashboard",
-    path: "/",
+    path: "/dashboard",
     icon: LayoutDashboard,
   },
   {
     name: "Marketplace",
     path: "/marketplace",
     icon: Store,
+  },
+  {
+    name: "Create NFT",
+    path: "/create-nft",
+    icon: PlusSquare,
   },
   {
     name: "Wallet",
@@ -30,6 +36,7 @@ function Sidebar({ isOpen, setIsOpen }) {
   return (
     <>
       {/* ================= MOBILE MENU BUTTON ================= */}
+
       {!isOpen && (
         <button
           type="button"
@@ -42,6 +49,7 @@ function Sidebar({ isOpen, setIsOpen }) {
       )}
 
       {/* ================= MOBILE OVERLAY ================= */}
+
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
@@ -50,6 +58,7 @@ function Sidebar({ isOpen, setIsOpen }) {
       )}
 
       {/* ================= SIDEBAR ================= */}
+
       <aside
         className={`
           fixed left-0 top-0 z-50
@@ -58,7 +67,6 @@ function Sidebar({ isOpen, setIsOpen }) {
           bg-[#0b0b12]
           text-white
           shadow-xl
-
           transition-[width,transform]
           duration-300
           ease-in-out
@@ -71,6 +79,7 @@ function Sidebar({ isOpen, setIsOpen }) {
         `}
       >
         {/* ================= HEADER ================= */}
+
         <div className="shrink-0 border-b border-white/5">
           <div
             className={`
@@ -79,6 +88,7 @@ function Sidebar({ isOpen, setIsOpen }) {
             `}
           >
             {/* LOGO */}
+
             <div className="min-w-0">
               <h1
                 className={`
@@ -96,7 +106,8 @@ function Sidebar({ isOpen, setIsOpen }) {
               )}
             </div>
 
-            {/* EXPANDED CLOSE BUTTON */}
+            {/* DESKTOP CLOSE */}
+
             {isOpen && (
               <button
                 type="button"
@@ -108,7 +119,8 @@ function Sidebar({ isOpen, setIsOpen }) {
               </button>
             )}
 
-            {/* MOBILE CLOSE BUTTON */}
+            {/* MOBILE CLOSE */}
+
             {isOpen && (
               <button
                 type="button"
@@ -121,7 +133,8 @@ function Sidebar({ isOpen, setIsOpen }) {
             )}
           </div>
 
-          {/* ================= COLLAPSED DESKTOP BUTTON ================= */}
+          {/* COLLAPSED DESKTOP BUTTON */}
+
           {!isOpen && (
             <div className="hidden justify-center pb-4 lg:flex">
               <button
@@ -137,6 +150,7 @@ function Sidebar({ isOpen, setIsOpen }) {
         </div>
 
         {/* ================= NAVIGATION ================= */}
+
         <div className="flex min-h-0 flex-1 flex-col pt-7">
           {isOpen && (
             <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-600">
@@ -152,7 +166,6 @@ function Sidebar({ isOpen, setIsOpen }) {
                 <NavLink
                   key={item.name}
                   to={item.path}
-                  end={item.path === "/"}
                   onClick={() => {
                     if (window.innerWidth < 1024) {
                       setIsOpen(false);
@@ -197,6 +210,7 @@ function Sidebar({ isOpen, setIsOpen }) {
         </div>
 
         {/* ================= ACCOUNT ================= */}
+
         <div className="shrink-0 border-t border-white/5 pb-5 pt-4">
           <NavLink
             to="/account"

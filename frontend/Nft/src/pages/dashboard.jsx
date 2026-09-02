@@ -8,12 +8,12 @@ import {
 } from "react-icons/fi";
 import { AnimatePresence, motion } from "framer-motion";
 
-import Topbar from "../components/topbar";
+// import Topbar from "../components/topbar";
+
 import {
   MotionDiv,
   MotionButton,
   fadeUp,
-  
   slideLeft,
   slideRight,
   staggerContainer,
@@ -54,10 +54,23 @@ const heroSlides = [
   },
 ];
 
-function Dashboard() {
+function Dashboard({ user }) {
   const navigate = useNavigate();
 
   const [currentSlide, setCurrentSlide] = useState(0);
+
+  // Get Google user information
+  const userName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    "Nimiq User";
+
+  const userEmail = user?.email || "";
+
+  const userAvatar =
+    user?.user_metadata?.avatar_url ||
+    user?.user_metadata?.picture ||
+    null;
 
   // Automatically change hero slide every 5 seconds
   useEffect(() => {
@@ -86,15 +99,50 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#08080f] text-white">
-      <Topbar />
+      {/* <Topbar /> */}
 
       <main className="p-5 lg:p-7">
+
+        {/* ================= USER WELCOME ================= */}
+
+        <section className="mb-6 flex items-center justify-between">
+
+          <div>
+            <p className="text-sm text-gray-500">
+              Welcome back 👋
+            </p>
+
+            <h2 className="mt-1 text-2xl font-bold sm:text-3xl">
+              {userName}
+            </h2>
+
+           
+          </div>
+
+          {/* User avatar */}
+
+          <div className="hidden sm:block">
+            {userAvatar ? (
+              <img
+                src={userAvatar}
+                alt={userName}
+                className="h-12 w-12 rounded-full border border-white/10 object-cover"
+              />
+            ) : (
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500 font-bold">
+                {userName.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+
+        </section>
 
         {/* ================= HERO ================= */}
 
         <section className="relative min-h-[420px] overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#250047] via-[#17002e] to-[#090914]">
 
           {/* Background glow */}
+
           <motion.div
             animate={{
               scale: [1, 1.15, 1],
@@ -124,6 +172,7 @@ function Dashboard() {
           {/* ================= SLIDE ================= */}
 
           <AnimatePresence mode="wait">
+
             <motion.div
               key={slide.id}
               initial={{ opacity: 0 }}
@@ -133,7 +182,7 @@ function Dashboard() {
               className="relative z-10 flex min-h-[420px] items-center p-7 lg:p-10"
             >
 
-              {/* ================= TEXT ================= */}
+              {/* TEXT */}
 
               <motion.div
                 variants={slideRight}
@@ -141,6 +190,7 @@ function Dashboard() {
                 animate="visible"
                 className="max-w-xl"
               >
+
                 <motion.p
                   variants={fadeUp}
                   initial="hidden"
@@ -158,6 +208,7 @@ function Dashboard() {
                   className="text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl"
                 >
                   {slide.title}{" "}
+
                   <span className="bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
                     {slide.highlight}
                   </span>
@@ -173,7 +224,7 @@ function Dashboard() {
                   {slide.description}
                 </motion.p>
 
-                {/* ================= BUTTONS ================= */}
+                {/* BUTTONS */}
 
                 <motion.div
                   variants={fadeUp}
@@ -182,6 +233,7 @@ function Dashboard() {
                   transition={{ delay: 0.3 }}
                   className="mt-7 flex flex-wrap gap-3"
                 >
+
                   <MotionButton
                     onClick={() => navigate("/marketplace")}
                     className="rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-500 px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-900/20"
@@ -189,16 +241,17 @@ function Dashboard() {
                     Explore Market
                   </MotionButton>
 
-                  <MotionButton
-                    onClick={() => navigate("/create")}
-                    className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold hover:bg-white/10"
-                  >
-                    Create Now
-                  </MotionButton>
+               <MotionButton
+  onClick={() => navigate("/create-nft")}
+  className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold hover:bg-white/10"
+>
+  Create Now
+</MotionButton>
                 </motion.div>
+
               </motion.div>
 
-              {/* ================= NFT IMAGE ================= */}
+              {/* NFT IMAGE */}
 
               <motion.div
                 variants={slideLeft}
@@ -206,7 +259,7 @@ function Dashboard() {
                 animate="visible"
                 className="absolute right-8 top-1/2 hidden h-72 w-72 -translate-y-1/2 md:block lg:right-16 lg:h-80 lg:w-80"
               >
-                {/* Glow */}
+
                 <motion.div
                   animate={{
                     scale: [1, 1.08, 1],
@@ -219,7 +272,6 @@ function Dashboard() {
                   className="absolute inset-4 rounded-3xl bg-purple-600/30 blur-3xl"
                 />
 
-                {/* Image */}
                 <motion.div
                   animate={{
                     rotate: [6, 4, 6],
@@ -232,6 +284,7 @@ function Dashboard() {
                   }}
                   className="relative h-full w-full overflow-hidden rounded-3xl border border-purple-400/30 bg-[#111119] shadow-2xl shadow-purple-900/40"
                 >
+
                   <img
                     src={slide.image}
                     alt={slide.highlight}
@@ -241,6 +294,7 @@ function Dashboard() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
 
                   <div className="absolute bottom-4 left-4">
+
                     <p className="text-xs text-gray-300">
                       Featured NFT
                     </p>
@@ -248,14 +302,18 @@ function Dashboard() {
                     <p className="mt-1 text-sm font-semibold">
                       {slide.highlight}
                     </p>
+
                   </div>
+
                 </motion.div>
+
               </motion.div>
 
             </motion.div>
+
           </AnimatePresence>
 
-          {/* ================= PREVIOUS ================= */}
+          {/* PREVIOUS */}
 
           <MotionButton
             onClick={previousSlide}
@@ -264,7 +322,7 @@ function Dashboard() {
             <FiChevronLeft size={18} />
           </MotionButton>
 
-          {/* ================= NEXT ================= */}
+          {/* NEXT */}
 
           <MotionButton
             onClick={nextSlide}
@@ -273,9 +331,10 @@ function Dashboard() {
             <FiChevronRight size={18} />
           </MotionButton>
 
-          {/* ================= DOTS ================= */}
+          {/* DOTS */}
 
           <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 gap-2">
+
             {heroSlides.map((_, index) => (
               <motion.button
                 key={index}
@@ -289,6 +348,7 @@ function Dashboard() {
                 }`}
               />
             ))}
+
           </div>
 
         </section>
@@ -299,14 +359,19 @@ function Dashboard() {
           variants={fadeUp}
           className="mt-8"
         >
+
           <div className="mb-4 flex items-center justify-between">
 
             <div className="flex items-center gap-2">
-              <span className="text-xl">🔥</span>
+
+              <span className="text-xl">
+                🔥
+              </span>
 
               <h2 className="text-xl font-semibold">
                 Trending Now
               </h2>
+
             </div>
 
             <button
@@ -325,6 +390,7 @@ function Dashboard() {
             viewport={{ once: true, amount: 0.2 }}
             className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
           >
+
             {trendingNFTs.map((nft) => (
               <motion.div
                 key={nft.id}
@@ -333,7 +399,9 @@ function Dashboard() {
                 <NFTCard nft={nft} />
               </motion.div>
             ))}
+
           </motion.div>
+
         </MotionDiv>
 
         {/* ================= LOWER DASHBOARD ================= */}
@@ -345,8 +413,11 @@ function Dashboard() {
           viewport={{ once: true, amount: 0.2 }}
           className="mt-8 grid gap-5 lg:grid-cols-2"
         >
+
           <MarketOverview />
+
           <RecentActivity />
+
         </motion.section>
 
       </main>
@@ -371,6 +442,7 @@ function NFTCard({ nft }) {
       }}
       className="group overflow-hidden rounded-xl border border-white/5 bg-[#101017]"
     >
+
       <div className="relative aspect-square overflow-hidden">
 
         <img
@@ -408,6 +480,7 @@ function NFTCard({ nft }) {
         <div className="mt-4 flex items-end justify-between">
 
           <div>
+
             <p className="text-xs text-gray-500">
               Price
             </p>
@@ -415,6 +488,7 @@ function NFTCard({ nft }) {
             <p className="mt-1 font-semibold">
               {nft.price} NIM
             </p>
+
           </div>
 
           <span className="text-xs font-medium text-green-400">
@@ -424,6 +498,7 @@ function NFTCard({ nft }) {
         </div>
 
       </div>
+
     </motion.article>
   );
 }
@@ -440,14 +515,17 @@ function MarketOverview() {
       transition={{ duration: 0.2 }}
       className="rounded-xl border border-white/5 bg-[#101017] p-5"
     >
+
       <div className="flex items-center justify-between">
 
         <div className="flex items-center gap-2">
+
           <FiTrendingUp className="text-purple-400" />
 
           <h2 className="font-semibold">
             Market Overview
           </h2>
+
         </div>
 
         <div className="flex rounded-lg bg-white/5 p-1 text-xs">
@@ -465,6 +543,7 @@ function MarketOverview() {
           </button>
 
         </div>
+
       </div>
 
       <div className="relative mt-6 h-44 overflow-hidden rounded-lg">
@@ -476,6 +555,7 @@ function MarketOverview() {
           className="absolute inset-0 h-full w-full"
           preserveAspectRatio="none"
         >
+
           <path
             d="M0 120 C30 100 45 115 70 95 C100 70 110 110 135 90 C165 65 180 105 205 80 C230 55 250 105 275 85 C300 70 315 100 340 55 C365 15 380 70 405 35 C430 10 445 55 470 25 C485 10 495 30 500 15"
             fill="none"
@@ -483,7 +563,9 @@ function MarketOverview() {
             strokeWidth="3"
             className="text-purple-500"
           />
+
         </svg>
+
       </div>
 
       <div className="mt-5 grid grid-cols-3 gap-4">
@@ -507,6 +589,7 @@ function MarketOverview() {
         />
 
       </div>
+
     </motion.div>
   );
 }
@@ -519,6 +602,7 @@ function MarketOverview() {
 function Stat({ label, value, change }) {
   return (
     <div>
+
       <p className="text-xs text-gray-500">
         {label}
       </p>
@@ -530,6 +614,7 @@ function Stat({ label, value, change }) {
       <p className="mt-1 text-xs text-green-400">
         {change}
       </p>
+
     </div>
   );
 }
@@ -546,6 +631,7 @@ function RecentActivity() {
       transition={{ duration: 0.2 }}
       className="rounded-xl border border-white/5 bg-[#101017] p-5"
     >
+
       <div className="mb-5 flex items-center justify-between">
 
         <h2 className="font-semibold">
@@ -572,6 +658,7 @@ function RecentActivity() {
             }}
             className="flex items-center justify-between rounded-lg p-3 transition hover:bg-white/5"
           >
+
             <div className="flex items-center gap-3">
 
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500 text-xs font-bold">
@@ -579,7 +666,9 @@ function RecentActivity() {
               </div>
 
               <div>
+
                 <p className="text-sm">
+
                   <span className="font-medium">
                     {activity.user}
                   </span>{" "}
@@ -587,11 +676,13 @@ function RecentActivity() {
                   <span className="text-gray-500">
                     {activity.action}
                   </span>
+
                 </p>
 
                 <p className="text-xs text-gray-500">
                   {activity.item}
                 </p>
+
               </div>
 
             </div>
@@ -606,6 +697,7 @@ function RecentActivity() {
         ))}
 
       </div>
+
     </motion.div>
   );
 }
