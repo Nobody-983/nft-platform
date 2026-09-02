@@ -6,8 +6,19 @@ import {
   FiChevronLeft,
   FiChevronRight,
 } from "react-icons/fi";
+import { AnimatePresence, motion } from "framer-motion";
 
 import Topbar from "../components/topbar";
+import {
+  MotionDiv,
+  MotionButton,
+  fadeUp,
+  fadeIn,
+  slideLeft,
+  slideRight,
+  staggerContainer,
+} from "../components/motion";
+
 import { trendingNFTs, recentActivity } from "../nft data/nftdata";
 
 const heroSlides = [
@@ -48,7 +59,7 @@ function Dashboard() {
 
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  // Automatically change slide
+  // Automatically change hero slide every 5 seconds
   useEffect(() => {
     const slider = setInterval(() => {
       setCurrentSlide((prev) =>
@@ -84,137 +95,210 @@ function Dashboard() {
         <section className="relative min-h-[420px] overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#250047] via-[#17002e] to-[#090914]">
 
           {/* Background glow */}
-          <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-purple-600/20 blur-3xl" />
+          <motion.div
+            animate={{
+              scale: [1, 1.15, 1],
+              opacity: [0.4, 0.6, 0.4],
+            }}
+            transition={{
+              duration: 5,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+            className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-purple-600/20 blur-3xl"
+          />
 
-          <div className="absolute -bottom-20 right-40 h-64 w-64 rounded-full bg-pink-600/10 blur-3xl" />
+          <motion.div
+            animate={{
+              scale: [1, 1.2, 1],
+              opacity: [0.2, 0.4, 0.2],
+            }}
+            transition={{
+              duration: 6,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+            className="absolute -bottom-20 right-40 h-64 w-64 rounded-full bg-pink-600/10 blur-3xl"
+          />
 
-          {/* Slide content */}
-          <div
-            key={slide.id}
-            className="relative z-10 flex min-h-[420px] items-center p-7 lg:p-10"
-          >
+          {/* ================= SLIDE ================= */}
 
-            {/* Text */}
-            <div className="max-w-xl">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={slide.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5 }}
+              className="relative z-10 flex min-h-[420px] items-center p-7 lg:p-10"
+            >
 
-              <p className="mb-3 text-sm font-medium tracking-wide text-purple-400">
-                {slide.tag}
-              </p>
+              {/* ================= TEXT ================= */}
 
-              <h1 className="text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
-                {slide.title}{" "}
-                <span className="bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
-                  {slide.highlight}
-                </span>
-              </h1>
-
-              <p className="mt-5 max-w-lg text-sm leading-6 text-gray-400 sm:text-base">
-                {slide.description}
-              </p>
-
-              {/* Buttons */}
-              <div className="mt-7 flex flex-wrap gap-3">
-
-                <button
-                  onClick={() => navigate("/marketplace")}
-                  className="rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-500 px-6 py-3 text-sm font-semibold transition hover:scale-105 hover:shadow-lg hover:shadow-purple-500/20"
+              <motion.div
+                variants={slideRight}
+                initial="hidden"
+                animate="visible"
+                className="max-w-xl"
+              >
+                <motion.p
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  className="mb-3 text-sm font-medium tracking-wide text-purple-400"
                 >
-                  Explore Market
-                </button>
+                  {slide.tag}
+                </motion.p>
 
-                <button
-                  onClick={() => navigate("/create")}
-                  className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold transition hover:bg-white/10"
+                <motion.h1
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  transition={{ delay: 0.1 }}
+                  className="text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl"
                 >
-                  Create Now
-                </button>
-
-              </div>
-
-            </div>
-
-
-            {/* ================= SLIDING NFT IMAGE ================= */}
-
-            <div className="absolute right-8 top-1/2 hidden h-72 w-72 -translate-y-1/2 md:block lg:right-16 lg:h-80 lg:w-80">
-
-              {/* Glow */}
-              <div className="absolute inset-4 rounded-3xl bg-purple-600/30 blur-3xl" />
-
-              {/* Image card */}
-              <div className="relative h-full w-full rotate-6 overflow-hidden rounded-3xl border border-purple-400/30 bg-[#111119] shadow-2xl shadow-purple-900/40">
-
-                <img
-                  src={slide.image}
-                  alt={slide.highlight}
-                  className="h-full w-full object-cover transition-all duration-700"
-                />
-
-                {/* Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-
-                {/* NFT label */}
-                <div className="absolute bottom-4 left-4">
-
-                  <p className="text-xs text-gray-300">
-                    Featured NFT
-                  </p>
-
-                  <p className="mt-1 text-sm font-semibold">
+                  {slide.title}{" "}
+                  <span className="bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
                     {slide.highlight}
-                  </p>
+                  </span>
+                </motion.h1>
 
-                </div>
+                <motion.p
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  transition={{ delay: 0.2 }}
+                  className="mt-5 max-w-lg text-sm leading-6 text-gray-400 sm:text-base"
+                >
+                  {slide.description}
+                </motion.p>
 
-              </div>
+                {/* ================= BUTTONS ================= */}
 
-            </div>
+                <motion.div
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  transition={{ delay: 0.3 }}
+                  className="mt-7 flex flex-wrap gap-3"
+                >
+                  <MotionButton
+                    onClick={() => navigate("/marketplace")}
+                    className="rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-500 px-6 py-3 text-sm font-semibold shadow-lg shadow-purple-900/20"
+                  >
+                    Explore Market
+                  </MotionButton>
 
+                  <MotionButton
+                    onClick={() => navigate("/create")}
+                    className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold hover:bg-white/10"
+                  >
+                    Create Now
+                  </MotionButton>
+                </motion.div>
+              </motion.div>
 
-            {/* ================= SLIDER CONTROLS ================= */}
+              {/* ================= NFT IMAGE ================= */}
 
-            <button
-              onClick={previousSlide}
-              className="absolute left-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur transition hover:bg-black/60"
-            >
-              <FiChevronLeft size={18} />
-            </button>
-
-            <button
-              onClick={nextSlide}
-              className="absolute right-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur transition hover:bg-black/60"
-            >
-              <FiChevronRight size={18} />
-            </button>
-
-
-            {/* ================= SLIDER DOTS ================= */}
-
-            <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 gap-2">
-
-              {heroSlides.map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => setCurrentSlide(index)}
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    currentSlide === index
-                      ? "w-6 bg-purple-400"
-                      : "w-2 bg-white/30 hover:bg-white/50"
-                  }`}
+              <motion.div
+                variants={slideLeft}
+                initial="hidden"
+                animate="visible"
+                className="absolute right-8 top-1/2 hidden h-72 w-72 -translate-y-1/2 md:block lg:right-16 lg:h-80 lg:w-80"
+              >
+                {/* Glow */}
+                <motion.div
+                  animate={{
+                    scale: [1, 1.08, 1],
+                  }}
+                  transition={{
+                    duration: 3,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                  className="absolute inset-4 rounded-3xl bg-purple-600/30 blur-3xl"
                 />
-              ))}
 
-            </div>
+                {/* Image */}
+                <motion.div
+                  animate={{
+                    rotate: [6, 4, 6],
+                    y: [0, -8, 0],
+                  }}
+                  transition={{
+                    duration: 4,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                  className="relative h-full w-full overflow-hidden rounded-3xl border border-purple-400/30 bg-[#111119] shadow-2xl shadow-purple-900/40"
+                >
+                  <img
+                    src={slide.image}
+                    alt={slide.highlight}
+                    className="h-full w-full object-cover"
+                  />
 
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+
+                  <div className="absolute bottom-4 left-4">
+                    <p className="text-xs text-gray-300">
+                      Featured NFT
+                    </p>
+
+                    <p className="mt-1 text-sm font-semibold">
+                      {slide.highlight}
+                    </p>
+                  </div>
+                </motion.div>
+              </motion.div>
+
+            </motion.div>
+          </AnimatePresence>
+
+          {/* ================= PREVIOUS ================= */}
+
+          <MotionButton
+            onClick={previousSlide}
+            className="absolute left-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur hover:bg-black/60"
+          >
+            <FiChevronLeft size={18} />
+          </MotionButton>
+
+          {/* ================= NEXT ================= */}
+
+          <MotionButton
+            onClick={nextSlide}
+            className="absolute right-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur hover:bg-black/60"
+          >
+            <FiChevronRight size={18} />
+          </MotionButton>
+
+          {/* ================= DOTS ================= */}
+
+          <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 gap-2">
+            {heroSlides.map((_, index) => (
+              <motion.button
+                key={index}
+                onClick={() => setCurrentSlide(index)}
+                whileHover={{ scale: 1.2 }}
+                whileTap={{ scale: 0.9 }}
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  currentSlide === index
+                    ? "w-6 bg-purple-400"
+                    : "w-2 bg-white/30 hover:bg-white/50"
+                }`}
+              />
+            ))}
           </div>
 
         </section>
 
-
         {/* ================= TRENDING ================= */}
 
-        <section className="mt-8">
-
+        <MotionDiv
+          variants={fadeUp}
+          className="mt-8"
+        >
           <div className="mb-4 flex items-center justify-between">
 
             <div className="flex items-center gap-2">
@@ -227,37 +311,43 @@ function Dashboard() {
 
             <button
               onClick={() => navigate("/marketplace")}
-              className="text-sm font-medium text-purple-400 hover:text-purple-300"
+              className="text-sm font-medium text-purple-400 transition hover:text-purple-300"
             >
               View all
             </button>
 
           </div>
 
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-
+          <motion.div
+            variants={staggerContainer}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.2 }}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          >
             {trendingNFTs.map((nft) => (
-              <NFTCard
+              <motion.div
                 key={nft.id}
-                nft={nft}
-              />
+                variants={fadeUp}
+              >
+                <NFTCard nft={nft} />
+              </motion.div>
             ))}
-
-          </div>
-
-        </section>
-
+          </motion.div>
+        </MotionDiv>
 
         {/* ================= LOWER DASHBOARD ================= */}
 
-        <section className="mt-8 grid gap-5 lg:grid-cols-2">
-
+        <motion.section
+          variants={fadeUp}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.2 }}
+          className="mt-8 grid gap-5 lg:grid-cols-2"
+        >
           <MarketOverview />
-
           <RecentActivity />
-
-        </section>
+        </motion.section>
 
       </main>
     </div>
@@ -271,8 +361,16 @@ function Dashboard() {
 
 function NFTCard({ nft }) {
   return (
-    <article className="group overflow-hidden rounded-xl border border-white/5 bg-[#101017] transition duration-300 hover:-translate-y-1 hover:border-purple-500/30">
-
+    <motion.article
+      whileHover={{
+        y: -6,
+        scale: 1.01,
+      }}
+      transition={{
+        duration: 0.2,
+      }}
+      className="group overflow-hidden rounded-xl border border-white/5 bg-[#101017]"
+    >
       <div className="relative aspect-square overflow-hidden">
 
         <img
@@ -287,9 +385,13 @@ function NFTCard({ nft }) {
           {nft.rank}
         </div>
 
-        <button className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 backdrop-blur transition hover:bg-black/80">
+        <motion.button
+          whileHover={{ scale: 1.15 }}
+          whileTap={{ scale: 0.9 }}
+          className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 backdrop-blur hover:bg-black/80"
+        >
           <FiHeart size={15} />
-        </button>
+        </motion.button>
 
       </div>
 
@@ -322,8 +424,7 @@ function NFTCard({ nft }) {
         </div>
 
       </div>
-
-    </article>
+    </motion.article>
   );
 }
 
@@ -334,8 +435,11 @@ function NFTCard({ nft }) {
 
 function MarketOverview() {
   return (
-    <div className="rounded-xl border border-white/5 bg-[#101017] p-5">
-
+    <motion.div
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.2 }}
+      className="rounded-xl border border-white/5 bg-[#101017] p-5"
+    >
       <div className="flex items-center justify-between">
 
         <div className="flex items-center gap-2">
@@ -361,7 +465,6 @@ function MarketOverview() {
           </button>
 
         </div>
-
       </div>
 
       <div className="relative mt-6 h-44 overflow-hidden rounded-lg">
@@ -381,7 +484,6 @@ function MarketOverview() {
             className="text-purple-500"
           />
         </svg>
-
       </div>
 
       <div className="mt-5 grid grid-cols-3 gap-4">
@@ -405,8 +507,7 @@ function MarketOverview() {
         />
 
       </div>
-
-    </div>
+    </motion.div>
   );
 }
 
@@ -440,8 +541,11 @@ function Stat({ label, value, change }) {
 
 function RecentActivity() {
   return (
-    <div className="rounded-xl border border-white/5 bg-[#101017] p-5">
-
+    <motion.div
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.2 }}
+      className="rounded-xl border border-white/5 bg-[#101017] p-5"
+    >
       <div className="mb-5 flex items-center justify-between">
 
         <h2 className="font-semibold">
@@ -456,13 +560,18 @@ function RecentActivity() {
 
       <div className="space-y-1">
 
-        {recentActivity.map((activity) => (
-
-          <div
+        {recentActivity.map((activity, index) => (
+          <motion.div
             key={activity.id}
+            initial={{ opacity: 0, x: 20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{
+              duration: 0.4,
+              delay: index * 0.08,
+            }}
             className="flex items-center justify-between rounded-lg p-3 transition hover:bg-white/5"
           >
-
             <div className="flex items-center gap-3">
 
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500 text-xs font-bold">
@@ -470,7 +579,6 @@ function RecentActivity() {
               </div>
 
               <div>
-
                 <p className="text-sm">
                   <span className="font-medium">
                     {activity.user}
@@ -484,7 +592,6 @@ function RecentActivity() {
                 <p className="text-xs text-gray-500">
                   {activity.item}
                 </p>
-
               </div>
 
             </div>
@@ -495,13 +602,11 @@ function RecentActivity() {
               </span>
             )}
 
-          </div>
-
+          </motion.div>
         ))}
 
       </div>
-
-    </div>
+    </motion.div>
   );
 }
 

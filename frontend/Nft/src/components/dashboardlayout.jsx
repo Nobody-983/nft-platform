@@ -3,7 +3,7 @@ import { Outlet } from "react-router-dom";
 import Sidebar from "../components/sidebar";
 
 function DashboardLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#0b0b12] text-white">
@@ -12,15 +12,9 @@ function DashboardLayout() {
         setIsOpen={setSidebarOpen}
       />
 
-      <div
-        className={`min-h-screen transition-all duration-300 ${
-          sidebarOpen ? "ml-64" : "ml-20"
-        }`}
-      >
-        <main>
-          <Outlet />
-        </main>
-      </div>
+      <main className="min-w-0 flex-1 pt-6 lg:pt-8">
+        <Outlet />
+      </main>
     </div>
   );
 }
