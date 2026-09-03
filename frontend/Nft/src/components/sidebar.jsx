@@ -1,13 +1,16 @@
+
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   Store,
   Wallet,
-  User,
   Menu,
   X,
   PlusSquare,
+  LogOut,
 } from "lucide-react";
+
+import { supabase } from "../lib/supabase";
 
 const navigation = [
   {
@@ -21,7 +24,7 @@ const navigation = [
     icon: Store,
   },
   {
-    name: "Create NFT",
+    name: "My NFTs",
     path: "/create-nft",
     icon: PlusSquare,
   },
@@ -33,6 +36,24 @@ const navigation = [
 ];
 
 function Sidebar({ isOpen, setIsOpen }) {
+  const handleNavigation = () => {
+    if (window.innerWidth < 1024) {
+      setIsOpen(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        console.error("Sign out error:", error);
+      }
+    } catch (error) {
+      console.error("Unexpected sign out error:", error);
+    }
+  };
+
   return (
     <>
       {/* ================= MOBILE MENU BUTTON ================= */}
@@ -53,7 +74,7 @@ function Sidebar({ isOpen, setIsOpen }) {
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-[40] bg-black/60 backdrop-blur-sm lg:hidden"
         />
       )}
 
@@ -106,26 +127,13 @@ function Sidebar({ isOpen, setIsOpen }) {
               )}
             </div>
 
-            {/* DESKTOP CLOSE */}
+            {/* CLOSE BUTTON */}
 
             {isOpen && (
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#151520] text-gray-400 transition hover:bg-white/[0.08] hover:text-white lg:flex"
-                aria-label="Collapse sidebar"
-              >
-                <X size={17} />
-              </button>
-            )}
-
-            {/* MOBILE CLOSE */}
-
-            {isOpen && (
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#151520] text-gray-400 transition hover:bg-white/[0.08] hover:text-white lg:hidden"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#151520] text-gray-400 transition hover:bg-white/[0.08] hover:text-white"
                 aria-label="Close sidebar"
               >
                 <X size={17} />
@@ -166,11 +174,7 @@ function Sidebar({ isOpen, setIsOpen }) {
                 <NavLink
                   key={item.name}
                   to={item.path}
-                  onClick={() => {
-                    if (window.innerWidth < 1024) {
-                      setIsOpen(false);
-                    }
-                  }}
+                  onClick={handleNavigation}
                   className={({ isActive }) =>
                     `
                     group flex items-center
@@ -209,49 +213,40 @@ function Sidebar({ isOpen, setIsOpen }) {
           </nav>
         </div>
 
-        {/* ================= ACCOUNT ================= */}
+        {/* ================= SIGN OUT ================= */}
 
         <div className="shrink-0 border-t border-white/5 pb-5 pt-4">
-          <NavLink
-            to="/account"
-            onClick={() => {
-              if (window.innerWidth < 1024) {
-                setIsOpen(false);
-              }
-            }}
-            className={({ isActive }) =>
-              `
-              group flex items-center
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className={`
+              group flex w-full items-center
               rounded-xl
               py-3
               text-sm font-medium
+              text-red-400
               transition-all duration-200
+              hover:bg-red-500/[0.08]
+              hover:text-red-300
 
               ${
                 isOpen
                   ? "gap-3 px-4"
                   : "justify-center px-2"
               }
-
-              ${
-                isActive
-                  ? "bg-purple-600 text-white shadow-lg shadow-purple-600/20"
-                  : "text-gray-400 hover:bg-white/[0.05] hover:text-white"
-              }
-              `
-            }
+            `}
           >
-            <User
+            <LogOut
               size={19}
               className="shrink-0 transition-transform duration-200 group-hover:scale-105"
             />
 
             {isOpen && (
               <span className="whitespace-nowrap">
-                Account
+                Sign Out
               </span>
             )}
-          </NavLink>
+          </button>
         </div>
       </aside>
     </>
