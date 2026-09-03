@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import {
   Bell,
@@ -14,7 +15,8 @@ import {
 
 import { supabase } from "../lib/supabase";
 
-function Account({ user }) {
+function Account() {
+  const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
 
   const [loading, setLoading] = useState(true);
@@ -32,17 +34,35 @@ function Account({ user }) {
   const [success, setSuccess] = useState("");
 
   // =========================
-  // LOAD PROFILE
+  // LOAD USER + PROFILE
   // =========================
 
   useEffect(() => {
-    if (!user?.id) return;
-
-    const loadProfile = async () => {
+    const loadAccount = async () => {
       try {
         setLoading(true);
         setError("");
 
+        // Get currently authenticated user
+        const {
+          data: { user: currentUser },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError) {
+          console.error("GET USER ERROR:", userError);
+          setError("Unable to load your account.");
+          return;
+        }
+
+        if (!currentUser) {
+          setError("You are not logged in.");
+          return;
+        }
+
+        setUser(currentUser);
+
+        // Load profile
         const { data, error: profileError } = await supabase
           .from("profiles")
           .select(`
@@ -55,7 +75,7 @@ function Account({ user }) {
             created_at,
             updated_at
           `)
-          .eq("id", user.id)
+          .eq("id", currentUser.id)
           .maybeSingle();
 
         if (profileError) {
@@ -69,18 +89,18 @@ function Account({ user }) {
         setUsername(data?.username || "");
         setBio(data?.bio || "");
       } catch (err) {
-        console.error("LOAD PROFILE ERROR:", err);
-        setError("Unable to load your profile.");
+        console.error("LOAD ACCOUNT ERROR:", err);
+        setError("Something went wrong while loading your account.");
       } finally {
         setLoading(false);
       }
     };
 
-    loadProfile();
-  }, [user?.id]);
+    loadAccount();
+  }, []);
 
   // =========================
-  // USER INFORMATION
+  // PROFILE DATA
   // =========================
 
   const displayName =
@@ -98,38 +118,15 @@ function Account({ user }) {
   const initial =
     displayName?.charAt(0)?.toUpperCase() || "N";
 
-  // =========================
-  // WALLET
-  // =========================
-
-  const walletAddress = profile?.wallet_address || "";
+  const walletAddress =
+    profile?.wallet_address || "";
 
   const shortWalletAddress = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`
     : "No wallet connected";
 
   // =========================
-  // COPY WALLET ADDRESS
-  // =========================
-
-  const copyWalletAddress = async () => {
-    if (!walletAddress) return;
-
-    try {
-      await navigator.clipboard.writeText(walletAddress);
-
-      setCopied(true);
-
-      setTimeout(() => {
-        setCopied(false);
-      }, 2000);
-    } catch (err) {
-      console.error("COPY WALLET ERROR:", err);
-    }
-  };
-
-  // =========================
-  // OPEN EDIT PROFILE
+  // EDIT PROFILE
   // =========================
 
   const openEditProfile = () => {
@@ -142,14 +139,18 @@ function Account({ user }) {
     setShowEditProfile(true);
   };
 
-  // =========================
-  // SAVE PROFILE
-  // =========================
+  const closeEditProfile = () => {
+    if (saving) return;
+
+    setShowEditProfile(false);
+    setError("");
+    setSuccess("");
+  };
 
   const handleSaveProfile = async (event) => {
     event.preventDefault();
 
-    if (saving) return;
+    if (saving || !user?.id) return;
 
     const cleanUsername = username
       .trim()
@@ -195,12 +196,18 @@ function Account({ user }) {
         .single();
 
       if (updateError) {
-        console.error("UPDATE PROFILE ERROR:", updateError);
+        console.error(
+          "UPDATE PROFILE ERROR:",
+          updateError
+        );
 
         if (updateError.code === "23505") {
           setError("That username is already taken.");
         } else {
-          setError("Unable to update your profile.");
+          setError(
+            updateError.message ||
+              "Unable to update your profile."
+          );
         }
 
         return;
@@ -219,12 +226,35 @@ function Account({ user }) {
       setTimeout(() => {
         setShowEditProfile(false);
         setSuccess("");
-      }, 1200);
+      }, 1000);
     } catch (err) {
       console.error("UPDATE PROFILE ERROR:", err);
-      setError("Something went wrong while updating your profile.");
+      setError(
+        err?.message ||
+          "Something went wrong while updating your profile."
+      );
     } finally {
       setSaving(false);
+    }
+  };
+
+  // =========================
+  // COPY WALLET
+  // =========================
+
+  const copyWalletAddress = async () => {
+    if (!walletAddress) return;
+
+    try {
+      await navigator.clipboard.writeText(walletAddress);
+
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch (err) {
+      console.error("COPY WALLET ERROR:", err);
     }
   };
 
@@ -233,7 +263,13 @@ function Account({ user }) {
   // =========================
 
   const handleDisconnectWallet = async () => {
-    if (!user?.id || !walletAddress || disconnecting) return;
+    if (
+      !user?.id ||
+      !walletAddress ||
+      disconnecting
+    ) {
+      return;
+    }
 
     const confirmed = window.confirm(
       "Are you sure you want to disconnect your wallet?"
@@ -246,15 +282,16 @@ function Account({ user }) {
       setError("");
       setSuccess("");
 
-      const { data, error: updateError } = await supabase
-        .from("profiles")
-        .update({
-          wallet_address: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id)
-        .select()
-        .single();
+      const { data, error: updateError } =
+        await supabase
+          .from("profiles")
+          .update({
+            wallet_address: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id)
+          .select()
+          .single();
 
       if (updateError) {
         console.error(
@@ -262,7 +299,11 @@ function Account({ user }) {
           updateError
         );
 
-        setError("Unable to disconnect your wallet.");
+        setError(
+          updateError.message ||
+            "Unable to disconnect your wallet."
+        );
+
         return;
       }
 
@@ -277,8 +318,15 @@ function Account({ user }) {
         setSuccess("");
       }, 2000);
     } catch (err) {
-      console.error("DISCONNECT WALLET ERROR:", err);
-      setError("Something went wrong while disconnecting.");
+      console.error(
+        "DISCONNECT WALLET ERROR:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Something went wrong while disconnecting."
+      );
     } finally {
       setDisconnecting(false);
     }
@@ -293,6 +341,7 @@ function Account({ user }) {
 
     try {
       setSigningOut(true);
+      setError("");
 
       const { error: signOutError } =
         await supabase.auth.signOut();
@@ -303,15 +352,20 @@ function Account({ user }) {
           signOutError
         );
 
-        setError("Unable to sign out.");
+        setError(
+          signOutError.message ||
+            "Unable to sign out."
+        );
+
         setSigningOut(false);
       }
-
-      // App.jsx should handle SIGNED_OUT
-      // and redirect the user to /login.
     } catch (err) {
       console.error("SIGN OUT ERROR:", err);
-      setError("Unable to sign out.");
+
+      setError(
+        err?.message || "Unable to sign out."
+      );
+
       setSigningOut(false);
     }
   };
@@ -331,12 +385,32 @@ function Account({ user }) {
     );
   }
 
+  // =========================
+  // NO USER
+  // =========================
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0b0b12] px-4 text-white">
+        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
+          <h1 className="text-xl font-bold">
+            Account unavailable
+          </h1>
+
+          <p className="mt-2 text-sm text-gray-500">
+            {error || "Please log in again."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================
+  // PAGE
+  // =========================
+
   return (
     <div className="min-h-screen bg-[#0b0b12] px-4 py-6 text-white sm:px-6 lg:px-8">
-      {/* =========================
-          HEADER
-      ========================= */}
-
       <div className="mb-8">
         <h1 className="text-2xl font-bold sm:text-3xl">
           Profile & Settings
@@ -348,16 +422,15 @@ function Account({ user }) {
       </div>
 
       <div className="max-w-4xl space-y-6">
-
-        {/* =========================
-            ERROR / SUCCESS
-        ========================= */}
+        {/* GLOBAL ERROR */}
 
         {error && !showEditProfile && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
           </div>
         )}
+
+        {/* GLOBAL SUCCESS */}
 
         {success && !showEditProfile && (
           <div className="rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400">
@@ -371,8 +444,7 @@ function Account({ user }) {
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-
-            {/* Avatar */}
+            {/* AVATAR */}
 
             <div className="relative shrink-0">
               {userAvatar ? (
@@ -397,7 +469,7 @@ function Account({ user }) {
               </button>
             </div>
 
-            {/* Profile information */}
+            {/* PROFILE INFO */}
 
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-xl font-bold sm:text-2xl">
@@ -414,6 +486,8 @@ function Account({ user }) {
                 </p>
               )}
             </div>
+
+            {/* EDIT */}
 
             <button
               type="button"
@@ -435,8 +509,7 @@ function Account({ user }) {
           </h2>
 
           <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-
-            {/* Personal Information */}
+            {/* PERSONAL INFORMATION */}
 
             <button
               type="button"
@@ -463,7 +536,7 @@ function Account({ user }) {
               />
             </button>
 
-            {/* Notifications */}
+            {/* NOTIFICATIONS */}
 
             <button
               type="button"
@@ -501,7 +574,6 @@ function Account({ user }) {
           </h2>
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-
             <div className="flex items-center gap-4">
               <div className="shrink-0 rounded-xl bg-purple-600/10 p-3 text-purple-400">
                 <Wallet size={21} />
@@ -526,8 +598,6 @@ function Account({ user }) {
 
             {walletAddress ? (
               <>
-                {/* Wallet address */}
-
                 <div className="mt-5 flex items-center justify-between rounded-xl bg-black/20 px-4 py-3">
                   <p className="truncate text-sm text-gray-400">
                     {walletAddress}
@@ -613,16 +683,16 @@ function Account({ user }) {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setShowEditProfile(false);
-              setError("");
-              setSuccess("");
+            if (
+              event.target === event.currentTarget &&
+              !saving
+            ) {
+              closeEditProfile();
             }
           }}
         >
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#11111a] p-5 shadow-2xl sm:p-6">
-
-            {/* Modal header */}
+            {/* MODAL HEADER */}
 
             <div className="mb-6 flex items-center justify-between">
               <div>
@@ -637,12 +707,9 @@ function Account({ user }) {
 
               <button
                 type="button"
-                onClick={() => {
-                  setShowEditProfile(false);
-                  setError("");
-                  setSuccess("");
-                }}
-                className="rounded-lg p-2 text-gray-500 transition hover:bg-white/5 hover:text-white"
+                onClick={closeEditProfile}
+                disabled={saving}
+                className="rounded-lg p-2 text-gray-500 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
                 aria-label="Close edit profile"
               >
                 <X size={20} />
@@ -653,7 +720,7 @@ function Account({ user }) {
               onSubmit={handleSaveProfile}
               className="space-y-5"
             >
-              {/* Username */}
+              {/* USERNAME */}
 
               <div>
                 <label
@@ -687,7 +754,7 @@ function Account({ user }) {
                 </p>
               </div>
 
-              {/* Email */}
+              {/* EMAIL */}
 
               <div>
                 <label
@@ -706,11 +773,12 @@ function Account({ user }) {
                 />
 
                 <p className="mt-2 text-xs text-gray-600">
-                  Your email is managed by your Nimiq account.
+                  Your email is managed by your Nimiq
+                  account.
                 </p>
               </div>
 
-              {/* Bio */}
+              {/* BIO */}
 
               <div>
                 <label
@@ -737,7 +805,7 @@ function Account({ user }) {
                 </div>
               </div>
 
-              {/* Modal error */}
+              {/* MODAL ERROR */}
 
               {error && (
                 <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -745,7 +813,7 @@ function Account({ user }) {
                 </div>
               )}
 
-              {/* Modal success */}
+              {/* MODAL SUCCESS */}
 
               {success && (
                 <div className="rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400">
@@ -753,16 +821,12 @@ function Account({ user }) {
                 </div>
               )}
 
-              {/* Buttons */}
+              {/* BUTTONS */}
 
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowEditProfile(false);
-                    setError("");
-                    setSuccess("");
-                  }}
+                  onClick={closeEditProfile}
                   disabled={saving}
                   className="rounded-xl border border-white/10 px-5 py-3 text-sm font-medium text-gray-400 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
                 >
