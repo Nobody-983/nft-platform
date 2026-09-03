@@ -19,68 +19,102 @@ function Account() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const [showEditProfile, setShowEditProfile] = useState(false);
 
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
 
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [copied, setCopied] = useState(false);
 
-  // =========================
-  // LOAD USER + PROFILE
-  // =========================
+  // ==========================================
+  // LOAD ACCOUNT
+  // ==========================================
 
   useEffect(() => {
+    let mounted = true;
+
     const loadAccount = async () => {
       try {
-        setLoading(true);
+        setLoadingProfile(true);
         setError("");
 
-        // Get currently authenticated user
+        // Get the current session.
+        // This is lighter than waiting on getUser().
         const {
-          data: { user: currentUser },
-          error: userError,
-        } = await supabase.auth.getUser();
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-        if (userError) {
-          console.error("GET USER ERROR:", userError);
-          setError("Unable to load your account.");
+        if (sessionError) {
+          console.error(
+            "GET SESSION ERROR:",
+            sessionError
+          );
+
+          if (mounted) {
+            setError(
+              sessionError.message ||
+                "Unable to load your account."
+            );
+          }
+
           return;
         }
 
-        if (!currentUser) {
-          setError("You are not logged in.");
+        if (!session?.user) {
+          if (mounted) {
+            setError("No active session found.");
+          }
+
           return;
         }
+
+        const currentUser = session.user;
+
+        if (!mounted) return;
 
         setUser(currentUser);
 
-        // Load profile
-        const { data, error: profileError } = await supabase
-          .from("profiles")
-          .select(`
-            id,
-            username,
-            display_name,
-            avatar_url,
-            bio,
-            wallet_address,
-            created_at,
-            updated_at
-          `)
-          .eq("id", currentUser.id)
-          .maybeSingle();
+        // ==========================================
+        // LOAD PROFILE
+        // ==========================================
+
+        const { data, error: profileError } =
+          await supabase
+            .from("profiles")
+            .select(`
+              id,
+              username,
+              display_name,
+              avatar_url,
+              bio,
+              wallet_address,
+              created_at,
+              updated_at
+            `)
+            .eq("id", currentUser.id)
+            .maybeSingle();
+
+        if (!mounted) return;
 
         if (profileError) {
-          console.error("LOAD PROFILE ERROR:", profileError);
-          setError("Unable to load your profile.");
+          console.error(
+            "LOAD PROFILE ERROR:",
+            profileError
+          );
+
+          setError(
+            profileError.message ||
+              "Unable to load your profile."
+          );
+
           return;
         }
 
@@ -89,45 +123,60 @@ function Account() {
         setUsername(data?.username || "");
         setBio(data?.bio || "");
       } catch (err) {
-        console.error("LOAD ACCOUNT ERROR:", err);
-        setError("Something went wrong while loading your account.");
+        console.error("ACCOUNT LOAD ERROR:", err);
+
+        if (mounted) {
+          setError(
+            err?.message ||
+              "Something went wrong while loading your account."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoadingProfile(false);
+        }
       }
     };
 
     loadAccount();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // =========================
-  // PROFILE DATA
-  // =========================
+  // ==========================================
+  // PROFILE VALUES
+  // ==========================================
 
   const displayName =
     profile?.display_name ||
     profile?.username ||
     "Nimiq User";
 
-  const profileUsername =
-    profile?.username || "nimiquser";
+  const currentUsername =
+    profile?.username || "username";
 
-  const userEmail = user?.email || "";
+  const email = user?.email || "No email available";
 
-  const userAvatar = profile?.avatar_url || null;
+  const avatar = profile?.avatar_url || null;
 
   const initial =
-    displayName?.charAt(0)?.toUpperCase() || "N";
+    displayName.charAt(0).toUpperCase();
 
   const walletAddress =
     profile?.wallet_address || "";
 
-  const shortWalletAddress = walletAddress
-    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`
+  const shortWallet = walletAddress
+    ? `${walletAddress.slice(
+        0,
+        6
+      )}...${walletAddress.slice(-6)}`
     : "No wallet connected";
 
-  // =========================
+  // ==========================================
   // EDIT PROFILE
-  // =========================
+  // ==========================================
 
   const openEditProfile = () => {
     setUsername(profile?.username || "");
@@ -146,6 +195,10 @@ function Account() {
     setError("");
     setSuccess("");
   };
+
+  // ==========================================
+  // SAVE PROFILE
+  // ==========================================
 
   const handleSaveProfile = async (event) => {
     event.preventDefault();
@@ -170,12 +223,16 @@ function Account() {
     }
 
     if (cleanUsername.length < 3) {
-      setError("Username must be at least 3 characters.");
+      setError(
+        "Username must be at least 3 characters."
+      );
       return;
     }
 
     if (cleanUsername.length > 30) {
-      setError("Username must be 30 characters or less.");
+      setError(
+        "Username must be 30 characters or less."
+      );
       return;
     }
 
@@ -184,16 +241,17 @@ function Account() {
       setError("");
       setSuccess("");
 
-      const { data, error: updateError } = await supabase
-        .from("profiles")
-        .update({
-          username: cleanUsername,
-          bio: bio.trim(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id)
-        .select()
-        .single();
+      const { data, error: updateError } =
+        await supabase
+          .from("profiles")
+          .update({
+            username: cleanUsername,
+            bio: bio.trim(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id)
+          .select()
+          .single();
 
       if (updateError) {
         console.error(
@@ -221,14 +279,20 @@ function Account() {
       setUsername(data.username || "");
       setBio(data.bio || "");
 
-      setSuccess("Profile updated successfully.");
+      setSuccess(
+        "Profile updated successfully."
+      );
 
       setTimeout(() => {
         setShowEditProfile(false);
         setSuccess("");
       }, 1000);
     } catch (err) {
-      console.error("UPDATE PROFILE ERROR:", err);
+      console.error(
+        "UPDATE PROFILE ERROR:",
+        err
+      );
+
       setError(
         err?.message ||
           "Something went wrong while updating your profile."
@@ -238,15 +302,17 @@ function Account() {
     }
   };
 
-  // =========================
+  // ==========================================
   // COPY WALLET
-  // =========================
+  // ==========================================
 
   const copyWalletAddress = async () => {
     if (!walletAddress) return;
 
     try {
-      await navigator.clipboard.writeText(walletAddress);
+      await navigator.clipboard.writeText(
+        walletAddress
+      );
 
       setCopied(true);
 
@@ -254,18 +320,21 @@ function Account() {
         setCopied(false);
       }, 2000);
     } catch (err) {
-      console.error("COPY WALLET ERROR:", err);
+      console.error(
+        "COPY WALLET ERROR:",
+        err
+      );
     }
   };
 
-  // =========================
+  // ==========================================
   // DISCONNECT WALLET
-  // =========================
+  // ==========================================
 
   const handleDisconnectWallet = async () => {
     if (
-      !user?.id ||
       !walletAddress ||
+      !user?.id ||
       disconnecting
     ) {
       return;
@@ -325,16 +394,16 @@ function Account() {
 
       setError(
         err?.message ||
-          "Something went wrong while disconnecting."
+          "Unable to disconnect your wallet."
       );
     } finally {
       setDisconnecting(false);
     }
   };
 
-  // =========================
+  // ==========================================
   // SIGN OUT
-  // =========================
+  // ==========================================
 
   const handleSignOut = async () => {
     if (signingOut) return;
@@ -360,57 +429,29 @@ function Account() {
         setSigningOut(false);
       }
     } catch (err) {
-      console.error("SIGN OUT ERROR:", err);
+      console.error(
+        "SIGN OUT ERROR:",
+        err
+      );
 
       setError(
-        err?.message || "Unable to sign out."
+        err?.message ||
+          "Unable to sign out."
       );
 
       setSigningOut(false);
     }
   };
 
-  // =========================
-  // LOADING
-  // =========================
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0b0b12] text-white">
-        <Loader2
-          size={30}
-          className="animate-spin text-purple-500"
-        />
-      </div>
-    );
-  }
-
-  // =========================
-  // NO USER
-  // =========================
-
-  if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0b0b12] px-4 text-white">
-        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
-          <h1 className="text-xl font-bold">
-            Account unavailable
-          </h1>
-
-          <p className="mt-2 text-sm text-gray-500">
-            {error || "Please log in again."}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // =========================
+  // ==========================================
   // PAGE
-  // =========================
+  // ==========================================
 
   return (
     <div className="min-h-screen bg-[#0b0b12] px-4 py-6 text-white sm:px-6 lg:px-8">
+
+      {/* HEADER */}
+
       <div className="mb-8">
         <h1 className="text-2xl font-bold sm:text-3xl">
           Profile & Settings
@@ -422,7 +463,20 @@ function Account() {
       </div>
 
       <div className="max-w-4xl space-y-6">
-        {/* GLOBAL ERROR */}
+
+        {/* LOADING NOTICE */}
+
+        {loadingProfile && (
+          <div className="flex items-center gap-2 rounded-xl border border-purple-500/20 bg-purple-500/10 px-4 py-3 text-sm text-purple-300">
+            <Loader2
+              size={16}
+              className="animate-spin"
+            />
+            Loading your profile...
+          </div>
+        )}
+
+        {/* ERROR */}
 
         {error && !showEditProfile && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -430,7 +484,7 @@ function Account() {
           </div>
         )}
 
-        {/* GLOBAL SUCCESS */}
+        {/* SUCCESS */}
 
         {success && !showEditProfile && (
           <div className="rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400">
@@ -443,13 +497,16 @@ function Account() {
         ========================= */}
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+
             {/* AVATAR */}
 
             <div className="relative shrink-0">
-              {userAvatar ? (
+
+              {avatar ? (
                 <img
-                  src={userAvatar}
+                  src={avatar}
                   alt={displayName}
                   className="h-24 w-24 rounded-full object-cover ring-2 ring-purple-500/30"
                 />
@@ -463,21 +520,23 @@ function Account() {
                 type="button"
                 onClick={openEditProfile}
                 className="absolute bottom-0 right-0 rounded-full bg-white p-2 text-black shadow-lg transition hover:bg-gray-200"
-                aria-label="Change profile picture"
+                aria-label="Edit profile"
               >
                 <Camera size={15} />
               </button>
+
             </div>
 
-            {/* PROFILE INFO */}
+            {/* INFO */}
 
             <div className="min-w-0 flex-1">
+
               <h2 className="truncate text-xl font-bold sm:text-2xl">
-                @{profileUsername}
+                @{currentUsername}
               </h2>
 
               <p className="mt-1 truncate text-sm text-gray-400">
-                {userEmail}
+                {email}
               </p>
 
               {profile?.bio && (
@@ -485,9 +544,10 @@ function Account() {
                   {profile.bio}
                 </p>
               )}
+
             </div>
 
-            {/* EDIT */}
+            {/* EDIT BUTTON */}
 
             <button
               type="button"
@@ -496,7 +556,9 @@ function Account() {
             >
               Edit Profile
             </button>
+
           </div>
+
         </section>
 
         {/* =========================
@@ -504,11 +566,13 @@ function Account() {
         ========================= */}
 
         <section>
+
           <h2 className="mb-3 text-lg font-semibold">
             Account
           </h2>
 
           <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+
             {/* PERSONAL INFORMATION */}
 
             <button
@@ -516,11 +580,13 @@ function Account() {
               onClick={openEditProfile}
               className="flex w-full items-center gap-4 border-b border-white/10 p-5 text-left transition hover:bg-white/[0.05]"
             >
+
               <div className="shrink-0 rounded-xl bg-purple-600/10 p-3 text-purple-400">
                 <User size={20} />
               </div>
 
               <div className="min-w-0 flex-1">
+
                 <p className="font-medium">
                   Personal Information
                 </p>
@@ -528,12 +594,14 @@ function Account() {
                 <p className="mt-1 text-sm text-gray-500">
                   Username and bio
                 </p>
+
               </div>
 
               <ChevronRight
                 size={19}
                 className="shrink-0 text-gray-500"
               />
+
             </button>
 
             {/* NOTIFICATIONS */}
@@ -542,11 +610,13 @@ function Account() {
               type="button"
               className="flex w-full items-center gap-4 p-5 text-left transition hover:bg-white/[0.05]"
             >
+
               <div className="shrink-0 rounded-xl bg-purple-600/10 p-3 text-purple-400">
                 <Bell size={20} />
               </div>
 
               <div className="min-w-0 flex-1">
+
                 <p className="font-medium">
                   Notifications
                 </p>
@@ -554,14 +624,18 @@ function Account() {
                 <p className="mt-1 text-sm text-gray-500">
                   Manage marketplace notifications
                 </p>
+
               </div>
 
               <ChevronRight
                 size={19}
                 className="shrink-0 text-gray-500"
               />
+
             </button>
+
           </div>
+
         </section>
 
         {/* =========================
@@ -569,24 +643,29 @@ function Account() {
         ========================= */}
 
         <section>
+
           <h2 className="mb-3 text-lg font-semibold">
             Wallet
           </h2>
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+
             <div className="flex items-center gap-4">
+
               <div className="shrink-0 rounded-xl bg-purple-600/10 p-3 text-purple-400">
                 <Wallet size={21} />
               </div>
 
               <div className="min-w-0 flex-1">
+
                 <p className="font-medium">
                   Connected Wallet
                 </p>
 
                 <p className="mt-1 truncate text-sm text-gray-500">
-                  {shortWalletAddress}
+                  {shortWallet}
                 </p>
+
               </div>
 
               {walletAddress && (
@@ -594,11 +673,14 @@ function Account() {
                   Connected
                 </span>
               )}
+
             </div>
 
             {walletAddress ? (
               <>
+
                 <div className="mt-5 flex items-center justify-between rounded-xl bg-black/20 px-4 py-3">
+
                   <p className="truncate text-sm text-gray-400">
                     {walletAddress}
                   </p>
@@ -611,6 +693,7 @@ function Account() {
                   >
                     <Copy size={17} />
                   </button>
+
                 </div>
 
                 {copied && (
@@ -629,15 +712,20 @@ function Account() {
                     ? "Disconnecting..."
                     : "Disconnect Wallet"}
                 </button>
+
               </>
             ) : (
               <div className="mt-5 rounded-xl bg-black/20 px-4 py-4">
+
                 <p className="text-sm text-gray-500">
                   No wallet is currently connected.
                 </p>
+
               </div>
             )}
+
           </div>
+
         </section>
 
         {/* =========================
@@ -645,17 +733,20 @@ function Account() {
         ========================= */}
 
         <section>
+
           <button
             type="button"
             onClick={handleSignOut}
             disabled={signingOut}
             className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left transition hover:border-red-500/20 hover:bg-red-500/[0.05] disabled:cursor-not-allowed disabled:opacity-60"
           >
+
             <div className="shrink-0 rounded-xl bg-red-500/10 p-3 text-red-400">
               <LogOut size={20} />
             </div>
 
             <div className="min-w-0 flex-1">
+
               <p className="font-medium text-red-400">
                 {signingOut
                   ? "Signing Out..."
@@ -665,14 +756,18 @@ function Account() {
               <p className="mt-1 text-sm text-gray-500">
                 Sign out of your Nimiq account
               </p>
+
             </div>
 
             <ChevronRight
               size={19}
               className="shrink-0 text-gray-500"
             />
+
           </button>
+
         </section>
+
       </div>
 
       {/* =========================
@@ -680,6 +775,7 @@ function Account() {
       ========================= */}
 
       {showEditProfile && (
+
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
           onMouseDown={(event) => {
@@ -691,11 +787,15 @@ function Account() {
             }
           }}
         >
+
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#11111a] p-5 shadow-2xl sm:p-6">
-            {/* MODAL HEADER */}
+
+            {/* HEADER */}
 
             <div className="mb-6 flex items-center justify-between">
+
               <div>
+
                 <h2 className="text-xl font-bold">
                   Edit Profile
                 </h2>
@@ -703,6 +803,7 @@ function Account() {
                 <p className="mt-1 text-sm text-gray-500">
                   Update your Nimiq profile.
                 </p>
+
               </div>
 
               <button
@@ -710,19 +811,21 @@ function Account() {
                 onClick={closeEditProfile}
                 disabled={saving}
                 className="rounded-lg p-2 text-gray-500 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
-                aria-label="Close edit profile"
               >
                 <X size={20} />
               </button>
+
             </div>
 
             <form
               onSubmit={handleSaveProfile}
               className="space-y-5"
             >
+
               {/* USERNAME */}
 
               <div>
+
                 <label
                   htmlFor="username"
                   className="mb-2 block text-sm font-medium"
@@ -731,6 +834,7 @@ function Account() {
                 </label>
 
                 <div className="flex items-center rounded-xl border border-white/10 bg-white/[0.04] px-4 transition focus-within:border-purple-500">
+
                   <span className="text-gray-500">
                     @
                   </span>
@@ -740,23 +844,28 @@ function Account() {
                     type="text"
                     value={username}
                     onChange={(event) =>
-                      setUsername(event.target.value)
+                      setUsername(
+                        event.target.value
+                      )
                     }
                     placeholder="username"
                     maxLength={30}
                     className="w-full bg-transparent px-2 py-3 text-sm text-white outline-none placeholder:text-gray-600"
                   />
+
                 </div>
 
                 <p className="mt-2 text-xs text-gray-600">
-                  3–30 characters. Letters, numbers and
-                  underscores only.
+                  3–30 characters. Letters, numbers
+                  and underscores only.
                 </p>
+
               </div>
 
               {/* EMAIL */}
 
               <div>
+
                 <label
                   htmlFor="email"
                   className="mb-2 block text-sm font-medium"
@@ -767,20 +876,17 @@ function Account() {
                 <input
                   id="email"
                   type="email"
-                  value={userEmail}
+                  value={email}
                   disabled
                   className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-gray-500 outline-none"
                 />
 
-                <p className="mt-2 text-xs text-gray-600">
-                  Your email is managed by your Nimiq
-                  account.
-                </p>
               </div>
 
               {/* BIO */}
 
               <div>
+
                 <label
                   htmlFor="bio"
                   className="mb-2 block text-sm font-medium"
@@ -792,7 +898,9 @@ function Account() {
                   id="bio"
                   value={bio}
                   onChange={(event) =>
-                    setBio(event.target.value)
+                    setBio(
+                      event.target.value
+                    )
                   }
                   placeholder="Tell people a little about yourself..."
                   maxLength={160}
@@ -803,9 +911,10 @@ function Account() {
                 <div className="mt-2 text-right text-xs text-gray-600">
                   {bio.length}/160
                 </div>
+
               </div>
 
-              {/* MODAL ERROR */}
+              {/* ERROR */}
 
               {error && (
                 <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -813,7 +922,7 @@ function Account() {
                 </div>
               )}
 
-              {/* MODAL SUCCESS */}
+              {/* SUCCESS */}
 
               {success && (
                 <div className="rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400">
@@ -824,6 +933,7 @@ function Account() {
               {/* BUTTONS */}
 
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+
                 <button
                   type="button"
                   onClick={closeEditProfile}
@@ -838,6 +948,7 @@ function Account() {
                   disabled={saving}
                   className="flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
+
                   {saving ? (
                     <>
                       <Loader2
@@ -852,12 +963,19 @@ function Account() {
                       Save Changes
                     </>
                   )}
+
                 </button>
+
               </div>
+
             </form>
+
           </div>
+
         </div>
+
       )}
+
     </div>
   );
 }
