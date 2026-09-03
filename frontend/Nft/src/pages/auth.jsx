@@ -1,121 +1,130 @@
 
 import { useState } from "react";
-import { supabase } from "../lib/supabase";
+import { init } from "@nimiq/mini-app-sdk";
+import { Wallet, Loader2, ShieldCheck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-export default function Auth() {
-  const [isLogin, setIsLogin] = useState(true);
-  const [loading, setLoading] = useState(false);
+function Auth() {
+  const navigate = useNavigate();
 
-  const handleGoogleAuth = async () => {
-    setLoading(true);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState("");
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
+  const connectWallet = async () => {
+    setConnecting(true);
+    setError("");
 
-    if (error) {
-      console.error("Google authentication error:", error.message);
-      alert(error.message);
-      setLoading(false);
+    try {
+      // Initialize the Nimiq provider
+      const nimiq = await init();
+
+      // Ask the user to connect/select their Nimiq account
+      const accounts = await nimiq.listAccounts();
+
+      if (!accounts || accounts.length === 0) {
+        throw new Error("No Nimiq wallet account was selected.");
+      }
+
+      const walletAddress = accounts[0];
+
+      // Save the connected wallet temporarily.
+      // We will replace this with a verified backend session
+      // once the authentication endpoint is connected.
+      localStorage.setItem("nimiq_wallet", walletAddress);
+
+      // Continue into the application
+      navigate("/dashboard");
+    } catch (err) {
+      console.error("Wallet connection error:", err);
+
+      if (
+        err?.message?.toLowerCase().includes("denied") ||
+        err?.message?.toLowerCase().includes("reject")
+      ) {
+        setError("Wallet connection was cancelled.");
+      } else {
+        setError(
+          err?.message || "Unable to connect to your Nimiq wallet."
+        );
+      }
+    } finally {
+      setConnecting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#0b0b12] text-white flex items-center justify-center px-6">
       <div className="w-full max-w-md">
 
-        {/* Logo / Brand */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold tracking-tight">
-            Nimiq
+        {/* Logo */}
+        <div className="text-center mb-10">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#1a1a25] border border-white/10">
+            <Wallet size={30} />
+          </div>
+
+          <h1 className="text-3xl font-bold tracking-tight">
+            Welcome back
           </h1>
 
-          <p className="text-gray-400 mt-2">
-            {isLogin
-              ? "Welcome back to Nimiq"
-              : "Create your Nimiq account"}
+          <p className="mt-3 text-sm text-white/50">
+            Connect your Nimiq wallet to continue
           </p>
         </div>
 
         {/* Auth Card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8">
+        <div className="rounded-3xl border border-white/10 bg-[#11111a] p-6 shadow-2xl">
 
-          <h2 className="text-2xl font-semibold mb-2">
-            {isLogin ? "Log in" : "Sign up"}
-          </h2>
-
-          <p className="text-sm text-gray-400 mb-6">
-            {isLogin
-              ? "Continue with your Google account to access Nimiq."
-              : "Create your account using your Google account."}
-          </p>
-
-          {/* Google Button */}
           <button
-            onClick={handleGoogleAuth}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3
-                       bg-white text-black font-medium
-                       py-3 px-4 rounded-xl
-                       hover:bg-gray-200 transition
-                       disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={connectWallet}
+            disabled={connecting}
+            className="w-full h-14 rounded-2xl bg-white text-black font-semibold flex items-center justify-center gap-3 transition hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {/* Google icon */}
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M21.805 12.23c0-.79-.065-1.55-.2-2.28H12v4.315h5.495a4.7 4.7 0 0 1-2.04 3.09v2.57h3.3c1.93-1.78 3.05-4.4 3.05-7.695Z"
-                fill="#4285F4"
-              />
-              <path
-                d="M12 22c2.76 0 5.075-.915 6.765-2.475l-3.3-2.57c-.915.615-2.08.98-3.465.98-2.665 0-4.92-1.8-5.73-4.22H2.86v2.65A10.22 10.22 0 0 0 12 22Z"
-                fill="#34A853"
-              />
-              <path
-                d="M6.27 13.715A6.14 6.14 0 0 1 5.95 12c0-.595.105-1.175.32-1.715V7.635H2.86A10.23 10.23 0 0 0 1.78 12c0 1.57.375 3.055 1.08 4.365l3.41-2.65Z"
-                fill="#FBBC05"
-              />
-              <path
-                d="M12 6.065c1.5 0 2.845.515 3.905 1.525l2.925-2.925C17.07 2.985 14.755 2 12 2a10.22 10.22 0 0 0-9.14 5.635l3.41 2.65C7.08 7.865 9.335 6.065 12 6.065Z"
-                fill="#EA4335"
-              />
-            </svg>
-
-            {loading
-              ? "Connecting..."
-              : "Continue with Google"}
+            {connecting ? (
+              <>
+                <Loader2 size={20} className="animate-spin" />
+                Connecting...
+              </>
+            ) : (
+              <>
+                <Wallet size={20} />
+                Connect Nimiq Wallet
+              </>
+            )}
           </button>
 
-          {/* Switch Login / Signup */}
-          <div className="text-center mt-6 text-sm text-gray-400">
-            {isLogin
-              ? "Don't have an account?"
-              : "Already have an account?"}
+          {error && (
+            <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          )}
 
-            <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="ml-2 text-white font-medium hover:underline"
-            >
-              {isLogin ? "Sign up" : "Log in"}
-            </button>
+          {/* Security information */}
+          <div className="mt-6 flex items-start gap-3 rounded-2xl bg-white/[0.03] p-4">
+            <ShieldCheck
+              size={20}
+              className="mt-0.5 shrink-0 text-white/70"
+            />
+
+            <div>
+              <p className="text-sm font-medium">
+                Wallet-first authentication
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-white/40">
+                Your private keys never leave your Nimiq wallet.
+                You approve wallet actions directly through Nimiq Pay.
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Terms */}
-        <p className="text-center text-xs text-gray-500 mt-6">
-          By continuing, you agree to Nimiq's Terms of Service
-          and Privacy Policy.
+        {/* Footer */}
+        <p className="mt-6 text-center text-xs text-white/30">
+          New here? Your wallet automatically creates your account.
         </p>
-
       </div>
     </div>
   );
 }
+
+export default Auth;
