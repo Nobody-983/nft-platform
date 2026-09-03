@@ -1,4 +1,3 @@
-
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -7,10 +6,8 @@ import {
   Menu,
   X,
   PlusSquare,
-  LogOut,
+  User,
 } from "lucide-react";
-
-import { supabase } from "../lib/supabase";
 
 const navigation = [
   {
@@ -33,24 +30,17 @@ const navigation = [
     path: "/wallet",
     icon: Wallet,
   },
+  {
+    name: "Account",
+    path: "/account",
+    icon: User,
+  },
 ];
 
 function Sidebar({ isOpen, setIsOpen }) {
   const handleNavigation = () => {
     if (window.innerWidth < 1024) {
       setIsOpen(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        console.error("Sign out error:", error);
-      }
-    } catch (error) {
-      console.error("Unexpected sign out error:", error);
     }
   };
 
@@ -211,42 +201,6 @@ function Sidebar({ isOpen, setIsOpen }) {
               );
             })}
           </nav>
-        </div>
-
-        {/* ================= SIGN OUT ================= */}
-
-        <div className="shrink-0 border-t border-white/5 pb-5 pt-4">
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className={`
-              group flex w-full items-center
-              rounded-xl
-              py-3
-              text-sm font-medium
-              text-red-400
-              transition-all duration-200
-              hover:bg-red-500/[0.08]
-              hover:text-red-300
-
-              ${
-                isOpen
-                  ? "gap-3 px-4"
-                  : "justify-center px-2"
-              }
-            `}
-          >
-            <LogOut
-              size={19}
-              className="shrink-0 transition-transform duration-200 group-hover:scale-105"
-            />
-
-            {isOpen && (
-              <span className="whitespace-nowrap">
-                Sign Out
-              </span>
-            )}
-          </button>
         </div>
       </aside>
     </>

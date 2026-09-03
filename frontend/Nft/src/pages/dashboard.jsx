@@ -17,8 +17,11 @@ import {
   staggerContainer,
 } from "../components/motion";
 
-import { recentActivity } from "../nft data/nftdata";
 import { supabase } from "../lib/supabase";
+
+// =====================================================
+// HERO SLIDES
+// =====================================================
 
 const heroSlides = [
   {
@@ -53,17 +56,45 @@ const heroSlides = [
   },
 ];
 
+// =====================================================
+// RECENT ACTIVITY
+// =====================================================
+
+const recentActivity = [
+  {
+    id: 1,
+    user: "Nimiq User",
+    action: "created",
+    item: "a new collectible",
+    price: null,
+  },
+  {
+    id: 2,
+    user: "Creator",
+    action: "listed",
+    item: "an NFT for sale",
+    price: "25 NIM",
+  },
+  {
+    id: 3,
+    user: "Collector",
+    action: "liked",
+    item: "a trending collectible",
+    price: null,
+  },
+];
+
+// =====================================================
+// DASHBOARD
+// =====================================================
+
 function Dashboard({ user }) {
   const navigate = useNavigate();
 
   const [currentSlide, setCurrentSlide] = useState(0);
-
   const [trendingNFTs, setTrendingNFTs] = useState([]);
-
   const [loadingTrending, setLoadingTrending] = useState(true);
-
   const [userLikes, setUserLikes] = useState(new Set());
-
   const [likingNFT, setLikingNFT] = useState(null);
 
   // =====================================================
@@ -115,7 +146,7 @@ function Dashboard({ user }) {
       setLoadingTrending(true);
 
       // -------------------------------------------------
-      // GET ALL NFTS
+      // FETCH NFTS
       // -------------------------------------------------
 
       const { data: nfts, error: nftError } = await supabase
@@ -123,13 +154,11 @@ function Dashboard({ user }) {
         .select("*");
 
       if (nftError) {
-        console.error("Error fetching NFTs:", nftError);
-        setTrendingNFTs([]);
-        return;
+        throw nftError;
       }
 
       // -------------------------------------------------
-      // GET ALL LIKES
+      // FETCH ALL LIKES
       // -------------------------------------------------
 
       const { data: likes, error: likesError } = await supabase
@@ -137,9 +166,7 @@ function Dashboard({ user }) {
         .select("nft_id, user_id");
 
       if (likesError) {
-        console.error("Error fetching likes:", likesError);
-        setTrendingNFTs([]);
-        return;
+        throw likesError;
       }
 
       // -------------------------------------------------
@@ -149,12 +176,15 @@ function Dashboard({ user }) {
       const likeCounts = {};
 
       (likes || []).forEach((like) => {
-        likeCounts[like.nft_id] =
-          (likeCounts[like.nft_id] || 0) + 1;
+        if (!likeCounts[like.nft_id]) {
+          likeCounts[like.nft_id] = 0;
+        }
+
+        likeCounts[like.nft_id] += 1;
       });
 
       // -------------------------------------------------
-      // CURRENT USER LIKES
+      // FIND CURRENT USER LIKES
       // -------------------------------------------------
 
       const currentUserLikes = new Set(
@@ -201,49 +231,55 @@ function Dashboard({ user }) {
       }));
 
       // -------------------------------------------------
-      // SORT BY LIKES
+      // SORT BY REAL LIKE COUNT
       // -------------------------------------------------
 
-      const sortedNFTs = formattedNFTs
-        .sort((a, b) => {
-          if (b.likes !== a.likes) {
-            return b.likes - a.likes;
-          }
+      formattedNFTs.sort((a, b) => {
+        if (b.likes !== a.likes) {
+          return b.likes - a.likes;
+        }
 
-          // If likes are equal, newer NFT first
-          return (
-            new Date(b.created_at || 0) -
-            new Date(a.created_at || 0)
-          );
-        })
-        .slice(0, 6);
+        return (
+          new Date(b.created_at || 0) -
+          new Date(a.created_at || 0)
+        );
+      });
 
       // -------------------------------------------------
-      // RANK
+      // TOP 6
       // -------------------------------------------------
 
-      const rankedNFTs = sortedNFTs.map((nft, index) => ({
-        ...nft,
-        rank: index + 1,
-      }));
+      const rankedNFTs = formattedNFTs
+        .slice(0, 6)
+        .map((nft, index) => ({
+          ...nft,
+          rank: index + 1,
+        }));
 
       setTrendingNFTs(rankedNFTs);
     } catch (error) {
       console.error("Trending NFT error:", error);
+
       setTrendingNFTs([]);
+      setUserLikes(new Set());
     } finally {
       setLoadingTrending(false);
     }
   };
 
   // =====================================================
-  // LOAD TRENDING
+  // INITIAL LOAD
   // =====================================================
 
   useEffect(() => {
-    if (user?.id) {
-      fetchTrendingNFTs();
+    if (!user?.id) {
+      setTrendingNFTs([]);
+      setUserLikes(new Set());
+      setLoadingTrending(false);
+      return;
     }
+
+    fetchTrendingNFTs();
   }, [user?.id]);
 
   // =====================================================
@@ -251,17 +287,27 @@ function Dashboard({ user }) {
   // =====================================================
 
   const handleLike = async (nftId) => {
+    // -------------------------------------------------
+    // REQUIRE LOGIN
+    // -------------------------------------------------
+
     if (!user?.id) {
       navigate("/login");
       return;
     }
 
-    if (likingNFT === nftId) return;
+    // -------------------------------------------------
+    // PREVENT DOUBLE CLICK
+    // -------------------------------------------------
+
+    if (likingNFT === nftId) {
+      return;
+    }
+
+    const alreadyLiked = userLikes.has(nftId);
 
     try {
       setLikingNFT(nftId);
-
-      const alreadyLiked = userLikes.has(nftId);
 
       // =================================================
       // UNLIKE
@@ -275,17 +321,25 @@ function Dashboard({ user }) {
           .eq("user_id", user.id);
 
         if (error) {
-          console.error("Unlike error:", error);
-          return;
+          throw error;
         }
+
+        // -----------------------------------------------
+        // UPDATE USER LIKE STATE IMMEDIATELY
+        // -----------------------------------------------
 
         setUserLikes((previous) => {
           const updated = new Set(previous);
+
           updated.delete(nftId);
+
           return updated;
         });
 
-        // Update count and re-rank
+        // -----------------------------------------------
+        // UPDATE UI IMMEDIATELY
+        // -----------------------------------------------
+
         setTrendingNFTs((previous) => {
           const updated = previous.map((nft) =>
             nft.id === nftId
@@ -297,12 +351,27 @@ function Dashboard({ user }) {
           );
 
           return updated
-            .sort((a, b) => b.likes - a.likes)
+            .sort((a, b) => {
+              if (b.likes !== a.likes) {
+                return b.likes - a.likes;
+              }
+
+              return (
+                new Date(b.created_at || 0) -
+                new Date(a.created_at || 0)
+              );
+            })
             .map((nft, index) => ({
               ...nft,
               rank: index + 1,
             }));
         });
+
+        // -----------------------------------------------
+        // RELOAD FROM DATABASE
+        // -----------------------------------------------
+
+        await fetchTrendingNFTs();
 
         return;
       }
@@ -319,17 +388,33 @@ function Dashboard({ user }) {
         });
 
       if (error) {
-        console.error("Like error:", error);
-        return;
+        // -----------------------------------------------
+        // DUPLICATE LIKE
+        // -----------------------------------------------
+
+        if (error.code === "23505") {
+          console.warn("NFT already liked.");
+        } else {
+          throw error;
+        }
       }
+
+      // -----------------------------------------------
+      // UPDATE USER LIKE STATE IMMEDIATELY
+      // -----------------------------------------------
 
       setUserLikes((previous) => {
         const updated = new Set(previous);
+
         updated.add(nftId);
+
         return updated;
       });
 
-      // Update count and re-rank
+      // -----------------------------------------------
+      // UPDATE UI IMMEDIATELY
+      // -----------------------------------------------
+
       setTrendingNFTs((previous) => {
         const updated = previous.map((nft) =>
           nft.id === nftId
@@ -341,14 +426,35 @@ function Dashboard({ user }) {
         );
 
         return updated
-          .sort((a, b) => b.likes - a.likes)
+          .sort((a, b) => {
+            if (b.likes !== a.likes) {
+              return b.likes - a.likes;
+            }
+
+            return (
+              new Date(b.created_at || 0) -
+              new Date(a.created_at || 0)
+            );
+          })
           .map((nft, index) => ({
             ...nft,
             rank: index + 1,
           }));
       });
+
+      // -----------------------------------------------
+      // RELOAD FROM DATABASE
+      // -----------------------------------------------
+
+      await fetchTrendingNFTs();
     } catch (error) {
       console.error("Like error:", error);
+
+      // -----------------------------------------------
+      // RESTORE REAL DATABASE STATE
+      // -----------------------------------------------
+
+      await fetchTrendingNFTs();
     } finally {
       setLikingNFT(null);
     }
@@ -358,7 +464,6 @@ function Dashboard({ user }) {
 
   return (
     <div className="min-h-screen bg-[#08080f] text-white">
-
       <main className="p-5 lg:p-7">
 
         {/* =====================================================
@@ -366,7 +471,6 @@ function Dashboard({ user }) {
         ===================================================== */}
 
         <section className="mb-6 flex items-center justify-between">
-
           <div>
             <p className="text-sm text-gray-500">
               Welcome back 👋
@@ -378,7 +482,6 @@ function Dashboard({ user }) {
           </div>
 
           <div className="hidden sm:block">
-
             {userAvatar ? (
               <img
                 src={userAvatar}
@@ -390,9 +493,7 @@ function Dashboard({ user }) {
                 {userName.charAt(0).toUpperCase()}
               </div>
             )}
-
           </div>
-
         </section>
 
         {/* =====================================================
@@ -428,7 +529,6 @@ function Dashboard({ user }) {
           />
 
           <AnimatePresence mode="wait">
-
             <motion.div
               key={slide.id}
               initial={{ opacity: 0 }}
@@ -501,7 +601,6 @@ function Dashboard({ user }) {
                   </MotionButton>
 
                 </motion.div>
-
               </motion.div>
 
               <motion.div
@@ -545,7 +644,6 @@ function Dashboard({ user }) {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
 
                   <div className="absolute bottom-4 left-4">
-
                     <p className="text-xs text-gray-300">
                       Featured NFT
                     </p>
@@ -553,15 +651,12 @@ function Dashboard({ user }) {
                     <p className="mt-1 text-sm font-semibold">
                       {slide.highlight}
                     </p>
-
                   </div>
 
                 </motion.div>
-
               </motion.div>
 
             </motion.div>
-
           </AnimatePresence>
 
           <MotionButton
@@ -579,7 +674,6 @@ function Dashboard({ user }) {
           </MotionButton>
 
           <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 gap-2">
-
             {heroSlides.map((_, index) => (
               <motion.button
                 key={index}
@@ -593,7 +687,6 @@ function Dashboard({ user }) {
                 }`}
               />
             ))}
-
           </div>
 
         </section>
@@ -610,15 +703,11 @@ function Dashboard({ user }) {
           <div className="mb-4 flex items-center justify-between">
 
             <div className="flex items-center gap-2">
-
-              <span className="text-xl">
-                🔥
-              </span>
+              <span className="text-xl">🔥</span>
 
               <h2 className="text-xl font-semibold">
                 Trending Now
               </h2>
-
             </div>
 
             <button
@@ -630,10 +719,12 @@ function Dashboard({ user }) {
 
           </div>
 
-          {/* LOADING */}
+          {/* ===================================================
+              LOADING
+          =================================================== */}
 
           {loadingTrending && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
               {[1, 2, 3, 4, 5, 6].map((item) => (
                 <div
@@ -645,56 +736,59 @@ function Dashboard({ user }) {
             </div>
           )}
 
-          {/* EMPTY */}
+          {/* ===================================================
+              EMPTY
+          =================================================== */}
 
-          {!loadingTrending &&
-            trendingNFTs.length === 0 && (
-              <div className="rounded-xl border border-white/5 bg-[#101017] p-10 text-center">
+          {!loadingTrending && trendingNFTs.length === 0 && (
+            <div className="rounded-xl border border-white/5 bg-[#101017] p-10 text-center">
 
-                <p className="text-gray-400">
-                  No trending NFTs yet.
-                </p>
+              <p className="text-gray-400">
+                No trending NFTs yet.
+              </p>
 
-                <p className="mt-2 text-sm text-gray-600">
-                  Be the first to like a collectible.
-                </p>
+              <p className="mt-2 text-sm text-gray-600">
+                Be the first to like a collectible.
+              </p>
 
-              </div>
-            )}
+            </div>
+          )}
 
-          {/* NFTS */}
+          {/* ===================================================
+              NFTS
+          =================================================== */}
 
-          {!loadingTrending &&
-            trendingNFTs.length > 0 && (
-              <motion.div
-                variants={staggerContainer}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{
-                  once: true,
-                  amount: 0.2,
-                }}
-                className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-              >
+          {!loadingTrending && trendingNFTs.length > 0 && (
+            <motion.div
+              variants={staggerContainer}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{
+                once: true,
+                amount: 0.2,
+              }}
+              className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            >
 
-                {trendingNFTs.map((nft) => (
-                  <motion.div
-                    key={nft.id}
-                    variants={fadeUp}
-                  >
+              {trendingNFTs.map((nft) => (
+                <motion.div
+                  key={nft.id}
+                  variants={fadeUp}
+                >
+                  <NFTCard
+                    nft={nft}
+                    liked={userLikes.has(nft.id)}
+                    liking={likingNFT === nft.id}
+                    onLike={() => handleLike(nft.id)}
+                    onOpen={() =>
+                      navigate(`/nft/${nft.id}`)
+                    }
+                  />
+                </motion.div>
+              ))}
 
-                    <NFTCard
-                      nft={nft}
-                      liked={userLikes.has(nft.id)}
-                      liking={likingNFT === nft.id}
-                      onLike={() => handleLike(nft.id)}
-                    />
-
-                  </motion.div>
-                ))}
-
-              </motion.div>
-            )}
+            </motion.div>
+          )}
 
         </MotionDiv>
 
@@ -720,20 +814,20 @@ function Dashboard({ user }) {
         </motion.section>
 
       </main>
-
     </div>
   );
 }
 
-/* =====================================================
-   NFT CARD
-===================================================== */
+// =====================================================
+// NFT CARD
+// =====================================================
 
 function NFTCard({
   nft,
   liked,
   liking,
   onLike,
+  onOpen,
 }) {
   return (
     <motion.article
@@ -747,7 +841,10 @@ function NFTCard({
       className="group overflow-hidden rounded-xl border border-white/5 bg-[#101017]"
     >
 
-      <div className="relative aspect-square overflow-hidden">
+      <div
+        onClick={onOpen}
+        className="relative aspect-square cursor-pointer overflow-hidden"
+      >
 
         <img
           src={nft.image}
@@ -772,20 +869,25 @@ function NFTCard({
           whileTap={{
             scale: 0.9,
           }}
-          onClick={onLike}
+          onClick={(e) => {
+            e.stopPropagation();
+            onLike();
+          }}
           disabled={liking}
           className={`absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full backdrop-blur transition ${
             liked
               ? "bg-purple-600 text-white"
               : "bg-black/50 text-white hover:bg-black/80"
+          } ${
+            liking
+              ? "cursor-wait opacity-70"
+              : ""
           }`}
         >
-
           <FiHeart
             size={15}
             className={liked ? "fill-current" : ""}
           />
-
         </motion.button>
 
         {/* LIKE COUNT */}
@@ -801,9 +903,7 @@ function NFTCard({
             }
           />
 
-          <span>
-            {nft.likes}
-          </span>
+          <span>{nft.likes}</span>
 
         </div>
 
@@ -811,7 +911,10 @@ function NFTCard({
 
       <div className="p-3">
 
-        <h3 className="truncate text-sm font-semibold">
+        <h3
+          onClick={onOpen}
+          className="cursor-pointer truncate text-sm font-semibold hover:text-purple-400"
+        >
           {nft.name}
         </h3>
 
@@ -849,9 +952,9 @@ function NFTCard({
   );
 }
 
-/* =====================================================
-   MARKET OVERVIEW
-===================================================== */
+// =====================================================
+// MARKET OVERVIEW
+// =====================================================
 
 function MarketOverview() {
   return (
@@ -943,9 +1046,9 @@ function MarketOverview() {
   );
 }
 
-/* =====================================================
-   STAT
-===================================================== */
+// =====================================================
+// STAT
+// =====================================================
 
 function Stat({
   label,
@@ -971,9 +1074,9 @@ function Stat({
   );
 }
 
-/* =====================================================
-   RECENT ACTIVITY
-===================================================== */
+// =====================================================
+// RECENT ACTIVITY
+// =====================================================
 
 function RecentActivity() {
   return (

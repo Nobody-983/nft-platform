@@ -1,54 +1,52 @@
 
 import { useState } from "react";
-import { init } from "@nimiq/mini-app-sdk";
 import { Wallet, Loader2, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
+import { useWallet } from "../context/walletContext";
 
 function Auth() {
   const navigate = useNavigate();
 
-  const [connecting, setConnecting] = useState(false);
+  const {
+    connectWallet,
+    isConnected,
+    walletAddress,
+    loading,
+  } = useWallet();
+
   const [error, setError] = useState("");
 
-  const connectWallet = async () => {
-    setConnecting(true);
+  const handleConnect = async () => {
     setError("");
 
     try {
-      // Initialize the Nimiq provider
-      const nimiq = await init();
+      const address = await connectWallet();
 
-      // Ask the user to connect/select their Nimiq account
-      const accounts = await nimiq.listAccounts();
-
-      if (!accounts || accounts.length === 0) {
-        throw new Error("No Nimiq wallet account was selected.");
+      if (!address) {
+        throw new Error(
+          "No Nimiq wallet account was selected."
+        );
       }
 
-      const walletAddress = accounts[0];
-
-      // Save the connected wallet temporarily.
-      // We will replace this with a verified backend session
-      // once the authentication endpoint is connected.
-      localStorage.setItem("nimiq_wallet", walletAddress);
-
-      // Continue into the application
       navigate("/dashboard");
     } catch (err) {
       console.error("Wallet connection error:", err);
 
+      const message = err?.message?.toLowerCase() || "";
+
       if (
-        err?.message?.toLowerCase().includes("denied") ||
-        err?.message?.toLowerCase().includes("reject")
+        message.includes("denied") ||
+        message.includes("reject") ||
+        message.includes("cancel")
       ) {
         setError("Wallet connection was cancelled.");
       } else {
         setError(
-          err?.message || "Unable to connect to your Nimiq wallet."
+          err?.message ||
+            "Unable to connect to your Nimiq wallet."
         );
       }
-    } finally {
-      setConnecting(false);
     }
   };
 
@@ -63,35 +61,62 @@ function Auth() {
           </div>
 
           <h1 className="text-3xl font-bold tracking-tight">
-            Welcome back
+            Welcome
           </h1>
 
           <p className="mt-3 text-sm text-white/50">
-            Connect your Nimiq wallet to continue
+            Connect your Nimiq wallet to enter the marketplace
           </p>
         </div>
 
         {/* Auth Card */}
         <div className="rounded-3xl border border-white/10 bg-[#11111a] p-6 shadow-2xl">
 
-          <button
-            onClick={connectWallet}
-            disabled={connecting}
-            className="w-full h-14 rounded-2xl bg-white text-black font-semibold flex items-center justify-center gap-3 transition hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {connecting ? (
-              <>
-                <Loader2 size={20} className="animate-spin" />
-                Connecting...
-              </>
-            ) : (
-              <>
-                <Wallet size={20} />
-                Connect Nimiq Wallet
-              </>
-            )}
-          </button>
+          {/* Connected wallet */}
+          {isConnected && walletAddress ? (
+            <div className="space-y-4">
 
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-xs text-white/40 mb-2">
+                  Connected wallet
+                </p>
+
+                <p className="text-sm font-medium break-all">
+                  {walletAddress}
+                </p>
+              </div>
+
+              <button
+                onClick={() => navigate("/dashboard")}
+                className="w-full h-14 rounded-2xl bg-white text-black font-semibold flex items-center justify-center gap-3 transition hover:bg-white/90"
+              >
+                Continue to Dashboard
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleConnect}
+              disabled={loading}
+              className="w-full h-14 rounded-2xl bg-white text-black font-semibold flex items-center justify-center gap-3 transition hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <Loader2
+                    size={20}
+                    className="animate-spin"
+                  />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <Wallet size={20} />
+                  Connect Nimiq Wallet
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Error */}
           {error && (
             <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
               {error}
@@ -107,12 +132,13 @@ function Auth() {
 
             <div>
               <p className="text-sm font-medium">
-                Wallet-first authentication
+                Your wallet, your identity
               </p>
 
               <p className="mt-1 text-xs leading-5 text-white/40">
-                Your private keys never leave your Nimiq wallet.
-                You approve wallet actions directly through Nimiq Pay.
+                Your private keys never leave your Nimiq
+                wallet. Wallet actions are approved directly
+                through Nimiq.
               </p>
             </div>
           </div>
@@ -120,7 +146,8 @@ function Auth() {
 
         {/* Footer */}
         <p className="mt-6 text-center text-xs text-white/30">
-          New here? Your wallet automatically creates your account.
+          New here? Connecting your wallet automatically
+          creates your account.
         </p>
       </div>
     </div>

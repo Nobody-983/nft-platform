@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ImagePlus,
   Upload,
@@ -25,6 +25,7 @@ import {
   uploadNFTImage,
   createNFT,
   deleteNFT,
+  deleteNFTImage,
 } from "../services/nftService";
 
 import {
@@ -33,7 +34,39 @@ import {
   getUserListings,
 } from "../services/marketService";
 
+// =========================================================
+// CONSTANTS
+// =========================================================
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+
+const ALLOWED_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+];
+
+const ALLOWED_IMAGE_EXTENSIONS = [
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+];
+
+const CATEGORIES = [
+  "Art",
+  "Music",
+  "Collectible",
+  "Gaming",
+];
+
+// =========================================================
+// COMPONENT
+// =========================================================
+
 function CreateNFT({ user }) {
+  const fileInputRef = useRef(null);
+
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -66,17 +99,13 @@ function CreateNFT({ user }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const categories = [
-    "Art",
-    "Music",
-    "Collectible",
-    "Gaming",
-  ];
-
-  // ================= FETCH USER NFTS =================
+  // =========================================================
+  // FETCH USER NFTS
+  // =========================================================
 
   const fetchNFTs = async () => {
     if (!user?.id) {
+      setNfts([]);
       setLoadingNFTs(false);
       return;
     }
@@ -84,14 +113,16 @@ function CreateNFT({ user }) {
     setLoadingNFTs(true);
 
     try {
-      const { data, error } = await supabase
+      const { data, error: fetchError } = await supabase
         .from("nfts")
         .select("*")
         .eq("creator_id", user.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", {
+          ascending: false,
+        });
 
-      if (error) {
-        throw error;
+      if (fetchError) {
+        throw fetchError;
       }
 
       setNfts(data || []);
@@ -103,10 +134,15 @@ function CreateNFT({ user }) {
     }
   };
 
-  // ================= FETCH USER LISTINGS =================
+  // =========================================================
+  // FETCH USER LISTINGS
+  // =========================================================
 
   const fetchListings = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setListings([]);
+      return;
+    }
 
     try {
       const data = await getUserListings(user.id);
@@ -116,153 +152,280 @@ function CreateNFT({ user }) {
     }
   };
 
+  // =========================================================
+  // INITIAL LOAD
+  // =========================================================
+
   useEffect(() => {
     fetchNFTs();
     fetchListings();
-  }, [user]);
+  }, [user?.id]);
 
-  // ================= FIND ACTIVE LISTING =================
+  // =========================================================
+  // FIND ACTIVE LISTING
+  // =========================================================
 
   const getNFTListing = (nftId) => {
     return listings.find(
-      (listing) =>
-        listing.nft_id === nftId &&
-        listing.status === "active"
+      (item) =>
+        item.nft_id === nftId &&
+        item.status === "active"
     );
   };
 
-  // ================= INPUT =================
+  // =========================================================
+  // INPUT HANDLING
+  // =========================================================
 
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    setForm((currentForm) => ({
-      ...currentForm,
+    setForm((current) => ({
+      ...current,
       [name]: value,
     }));
   };
 
-  // ================= IMAGE =================
+  // =========================================================
+  // VALIDATE IMAGE
+  // =========================================================
+
+  const validateImage = (file) => {
+    if (!file) {
+      return "Please select an image.";
+    }
+
+    if (!file.type) {
+      return "Unable to determine the image type.";
+    }
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      return "Only PNG, JPG, JPEG or WEBP images are allowed.";
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      return "Image must be less than 5MB.";
+    }
+
+    const extension = file.name
+      ?.split(".")
+      .pop()
+      ?.toLowerCase();
+
+    if (
+      !extension ||
+      !ALLOWED_IMAGE_EXTENSIONS.includes(extension)
+    ) {
+      return "Invalid image file extension.";
+    }
+
+    return null;
+  };
+
+  // =========================================================
+  // IMAGE SELECTION
+  // =========================================================
 
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     setError("");
     setSuccess("");
 
-    const allowedTypes = [
-      "image/png",
-      "image/jpeg",
-      "image/webp",
-    ];
+    const validationError = validateImage(file);
 
-    if (!allowedTypes.includes(file.type)) {
-      setError("Please upload a PNG, JPG or WEBP image.");
-      e.target.value = "";
+    if (validationError) {
+      setImage(null);
+      setPreview("");
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      setError(validationError);
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Image must be less than 5MB.");
-      e.target.value = "";
-      return;
-    }
-
+    // Revoke the previous preview URL.
     if (preview) {
       URL.revokeObjectURL(preview);
     }
 
-    const objectUrl = URL.createObjectURL(file);
+    const newPreview = URL.createObjectURL(file);
 
     setImage(file);
-    setPreview(objectUrl);
-
-    e.target.value = "";
+    setPreview(newPreview);
   };
+
+  // =========================================================
+  // REMOVE IMAGE
+  // =========================================================
 
   const removeImage = () => {
     if (preview) {
       URL.revokeObjectURL(preview);
     }
 
-    setImage(null);
     setPreview("");
+    setImage(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
-  // ================= CREATE NFT =================
+  // =========================================================
+  // CREATE NFT
+  // =========================================================
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (loading) return;
+    if (loading) {
+      return;
+    }
 
     setError("");
     setSuccess("");
 
+    // -------------------------------------------------------
+    // AUTH CHECK
+    // -------------------------------------------------------
+
     if (!user?.id) {
-      setError("You must be logged in to create an NFT.");
+      setError(
+        "You must be logged in to create an NFT."
+      );
       return;
     }
 
-    if (!form.name.trim()) {
+    // -------------------------------------------------------
+    // NAME
+    // -------------------------------------------------------
+
+    const trimmedName = form.name.trim();
+
+    if (!trimmedName) {
       setError("NFT name is required.");
       return;
     }
+
+    if (trimmedName.length > 100) {
+      setError(
+        "NFT name must be 100 characters or less."
+      );
+      return;
+    }
+
+    // -------------------------------------------------------
+    // DESCRIPTION
+    // -------------------------------------------------------
+
+    const trimmedDescription =
+      form.description.trim();
+
+    if (trimmedDescription.length > 1000) {
+      setError(
+        "Description must be 1000 characters or less."
+      );
+      return;
+    }
+
+    // -------------------------------------------------------
+    // IMAGE
+    // -------------------------------------------------------
 
     if (!image) {
       setError("Please select an image.");
       return;
     }
 
-    if (!form.price || Number(form.price) <= 0) {
+    const imageValidationError =
+      validateImage(image);
+
+    if (imageValidationError) {
+      setError(imageValidationError);
+      return;
+    }
+
+    // -------------------------------------------------------
+    // PRICE
+    // -------------------------------------------------------
+
+    const numericPrice = Number(form.price);
+
+    if (
+      !form.price ||
+      !Number.isFinite(numericPrice) ||
+      numericPrice <= 0
+    ) {
       setError("Please enter a valid price.");
       return;
     }
+
+    // -------------------------------------------------------
+    // UPLOAD + CREATE
+    // -------------------------------------------------------
+
+    let uploadedImage = null;
 
     try {
       setLoading(true);
       setUploading(true);
 
-      // ================= UPLOAD IMAGE =================
+      // -----------------------------------------------------
+      // Upload image
+      // -----------------------------------------------------
 
-      let imageUrl;
+      uploadedImage = await uploadNFTImage(
+        image,
+        user.id
+      );
 
-      try {
-        imageUrl = await uploadNFTImage(
-          image,
-          user.id
-        );
-      } catch (uploadError) {
-        console.error(
-          "NFT image upload error:",
-          uploadError
-        );
-
+      if (!uploadedImage?.publicUrl) {
         throw new Error(
-          "Image upload failed. Please check your internet connection and try again."
+          "Image upload completed but no image URL was returned."
         );
-      } finally {
-        setUploading(false);
       }
 
-      // ================= CREATE NFT =================
+      setUploading(false);
+
+      // -----------------------------------------------------
+      // Create NFT database record
+      // -----------------------------------------------------
 
       const newNFT = await createNFT({
         creator_id: user.id,
-        name: form.name.trim(),
-        description: form.description.trim(),
-        image_url: imageUrl,
+        name: trimmedName,
+        description: trimmedDescription,
+        image_url: uploadedImage.publicUrl,
         category: form.category,
-        price: Number(form.price),
+        price: numericPrice,
         currency: form.currency,
       });
+
+      if (!newNFT) {
+        throw new Error(
+          "NFT could not be created."
+        );
+      }
+
+      // -----------------------------------------------------
+      // Update UI immediately
+      // -----------------------------------------------------
 
       setNfts((currentNFTs) => [
         newNFT,
         ...currentNFTs,
       ]);
+
+      // -----------------------------------------------------
+      // Reset form
+      // -----------------------------------------------------
 
       setForm({
         name: "",
@@ -274,9 +437,33 @@ function CreateNFT({ user }) {
 
       removeImage();
 
-      setSuccess("NFT created successfully.");
+      setSuccess(
+        "NFT created successfully."
+      );
     } catch (err) {
-      console.error("NFT creation error:", err);
+      console.error(
+        "NFT creation error:",
+        err
+      );
+
+      // -----------------------------------------------------
+      // IMPORTANT:
+      // If the image was uploaded but NFT creation failed,
+      // remove the unused image from Supabase Storage.
+      // -----------------------------------------------------
+
+      if (uploadedImage?.filePath) {
+        try {
+          await deleteNFTImage(
+            uploadedImage.filePath
+          );
+        } catch (cleanupError) {
+          console.error(
+            "Failed to clean up uploaded image:",
+            cleanupError
+          );
+        }
+      }
 
       setError(
         err?.message ||
@@ -288,7 +475,9 @@ function CreateNFT({ user }) {
     }
   };
 
-  // ================= OPEN LISTING FORM =================
+  // =========================================================
+  // OPEN LISTING FORM
+  // =========================================================
 
   const openListingForm = (nft) => {
     setError("");
@@ -302,10 +491,14 @@ function CreateNFT({ user }) {
     });
   };
 
-  // ================= CLOSE LISTING FORM =================
+  // =========================================================
+  // CLOSE LISTING FORM
+  // =========================================================
 
   const closeListingForm = () => {
-    if (listing) return;
+    if (listing) {
+      return;
+    }
 
     setListingNFT(null);
 
@@ -315,43 +508,55 @@ function CreateNFT({ user }) {
     });
   };
 
-  // ================= LIST NFT =================
+  // =========================================================
+  // LIST NFT
+  // =========================================================
 
   const handleListNFT = async (e) => {
     e.preventDefault();
 
-    if (!listingNFT || listing) return;
+    if (!listingNFT || listing) {
+      return;
+    }
 
     setError("");
     setSuccess("");
 
     if (!user?.id) {
-      setError("You must be logged in to list an NFT.");
+      setError(
+        "You must be logged in to list an NFT."
+      );
       return;
     }
 
+    const numericPrice =
+      Number(listingForm.price);
+
     if (
       !listingForm.price ||
-      Number(listingForm.price) <= 0
+      !Number.isFinite(numericPrice) ||
+      numericPrice <= 0
     ) {
-      setError("Please enter a valid listing price.");
+      setError(
+        "Please enter a valid listing price."
+      );
       return;
     }
 
     try {
       setListing(listingNFT.id);
 
-      /*
-       * seller_id is intentionally NOT passed here.
-       *
-       * marketService gets the authenticated Supabase
-       * user directly using supabase.auth.getUser().
-       */
       const newListing = await createListing({
         nft_id: listingNFT.id,
-        price: Number(listingForm.price),
+        price: numericPrice,
         currency: listingForm.currency,
       });
+
+      if (!newListing) {
+        throw new Error(
+          "Unable to create marketplace listing."
+        );
+      }
 
       setListings((currentListings) => [
         newListing,
@@ -371,7 +576,10 @@ function CreateNFT({ user }) {
         `"${nftName}" is now listed for sale.`
       );
     } catch (err) {
-      console.error("NFT listing error:", err);
+      console.error(
+        "NFT listing error:",
+        err
+      );
 
       setError(
         err?.message ||
@@ -382,25 +590,31 @@ function CreateNFT({ user }) {
     }
   };
 
-  // ================= CANCEL LISTING =================
+  // =========================================================
+  // CANCEL LISTING
+  // =========================================================
 
   const handleCancelListing = async (nft) => {
-    const currentListing = getNFTListing(nft.id);
+    const currentListing =
+      getNFTListing(nft.id);
 
-    if (!currentListing || cancelling) return;
+    if (!currentListing || cancelling) {
+      return;
+    }
 
     const confirmed = window.confirm(
       `Remove "${nft.name}" from the marketplace?`
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       setCancelling(nft.id);
       setError("");
       setSuccess("");
 
-      // Get the actual authenticated Supabase user
       const {
         data: { user: authUser },
         error: authError,
@@ -416,20 +630,9 @@ function CreateNFT({ user }) {
         );
       }
 
-      console.log(
-        "Authenticated user:",
-        authUser.id
-      );
-
-      console.log(
-        "Listing seller:",
-        currentListing.seller_id
-      );
-
-      // Make sure this listing actually belongs to
-      // the currently authenticated user.
       if (
-        authUser.id !== currentListing.seller_id
+        authUser.id !==
+        currentListing.seller_id
       ) {
         throw new Error(
           "You are not the owner of this listing."
@@ -440,7 +643,6 @@ function CreateNFT({ user }) {
         currentListing.id
       );
 
-      // Update local state immediately
       setListings((currentListings) =>
         currentListings.map((item) =>
           item.id === currentListing.id
@@ -470,10 +672,13 @@ function CreateNFT({ user }) {
     }
   };
 
-  // ================= DELETE NFT =================
+  // =========================================================
+  // DELETE NFT
+  // =========================================================
 
   const handleDelete = async (nft) => {
-    const currentListing = getNFTListing(nft.id);
+    const currentListing =
+      getNFTListing(nft.id);
 
     if (currentListing) {
       setError(
@@ -482,13 +687,17 @@ function CreateNFT({ user }) {
       return;
     }
 
-    if (deleting) return;
+    if (deleting) {
+      return;
+    }
 
     const confirmed = window.confirm(
       `Are you sure you want to delete "${nft.name}"?`
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       setDeleting(nft.id);
@@ -503,9 +712,14 @@ function CreateNFT({ user }) {
         )
       );
 
-      setSuccess("NFT deleted successfully.");
+      setSuccess(
+        "NFT deleted successfully."
+      );
     } catch (err) {
-      console.error("NFT delete error:", err);
+      console.error(
+        "NFT delete error:",
+        err
+      );
 
       setError(
         err?.message ||
@@ -516,13 +730,17 @@ function CreateNFT({ user }) {
     }
   };
 
-  // ================= VIEW NFT =================
+  // =========================================================
+  // VIEW NFT
+  // =========================================================
 
   const handleViewNFT = (nft) => {
     window.location.href = `/nft/${nft.id}`;
   };
 
-  // ================= CLEAN PREVIEW =================
+  // =========================================================
+  // CLEAN PREVIEW ON UNMOUNT
+  // =========================================================
 
   useEffect(() => {
     return () => {
@@ -532,10 +750,16 @@ function CreateNFT({ user }) {
     };
   }, [preview]);
 
+  // =========================================================
+  // RENDER
+  // =========================================================
+
   return (
     <div className="min-h-screen bg-[#0b0b12] px-4 py-6 text-white sm:px-6">
 
-      {/* ================= HEADER ================= */}
+      {/* =====================================================
+          HEADER
+      ====================================================== */}
 
       <MotionDiv
         variants={fadeUp}
@@ -550,7 +774,9 @@ function CreateNFT({ user }) {
         </p>
       </MotionDiv>
 
-      {/* ================= MESSAGES ================= */}
+      {/* =====================================================
+          ERROR
+      ====================================================== */}
 
       {error && (
         <MotionDiv
@@ -560,6 +786,7 @@ function CreateNFT({ user }) {
           <span>{error}</span>
 
           <button
+            type="button"
             onClick={() => setError("")}
             className="ml-4"
           >
@@ -568,16 +795,30 @@ function CreateNFT({ user }) {
         </MotionDiv>
       )}
 
+      {/* =====================================================
+          SUCCESS
+      ====================================================== */}
+
       {success && (
         <MotionDiv
           variants={fadeIn}
-          className="mb-6 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400"
+          className="mb-6 flex items-center justify-between rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400"
         >
-          {success}
+          <span>{success}</span>
+
+          <button
+            type="button"
+            onClick={() => setSuccess("")}
+            className="ml-4"
+          >
+            <X size={17} />
+          </button>
         </MotionDiv>
       )}
 
-      {/* ================= CREATE NFT ================= */}
+      {/* =====================================================
+          CREATE NFT
+      ====================================================== */}
 
       <MotionDiv
         variants={fadeUp}
@@ -598,7 +839,7 @@ function CreateNFT({ user }) {
           className="grid gap-8 lg:grid-cols-[320px_1fr]"
         >
 
-          {/* IMAGE */}
+          {/* IMAGE UPLOAD */}
 
           <div>
             <label className="mb-3 block text-sm font-medium">
@@ -642,6 +883,7 @@ function CreateNFT({ user }) {
                 </p>
 
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   onChange={handleImageChange}
@@ -657,6 +899,8 @@ function CreateNFT({ user }) {
 
           <div className="space-y-5">
 
+            {/* NAME */}
+
             <div>
               <label className="mb-2 block text-sm font-medium">
                 NFT Name
@@ -668,10 +912,13 @@ function CreateNFT({ user }) {
                 value={form.name}
                 onChange={handleChange}
                 disabled={loading}
+                maxLength={100}
                 placeholder="Enter NFT name"
                 className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
+
+            {/* DESCRIPTION */}
 
             <div>
               <label className="mb-2 block text-sm font-medium">
@@ -683,11 +930,14 @@ function CreateNFT({ user }) {
                 value={form.description}
                 onChange={handleChange}
                 disabled={loading}
+                maxLength={1000}
                 rows={5}
                 placeholder="Describe your NFT..."
                 className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
+
+            {/* CATEGORY */}
 
             <div>
               <label className="mb-2 block text-sm font-medium">
@@ -701,7 +951,7 @@ function CreateNFT({ user }) {
                 disabled={loading}
                 className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {categories.map((category) => (
+                {CATEGORIES.map((category) => (
                   <option
                     key={category}
                     value={category}
@@ -711,6 +961,8 @@ function CreateNFT({ user }) {
                 ))}
               </select>
             </div>
+
+            {/* PRICE */}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_140px]">
 
@@ -731,6 +983,8 @@ function CreateNFT({ user }) {
                   className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
+
+              {/* CURRENCY */}
 
               <div>
                 <label className="mb-2 block text-sm font-medium">
@@ -759,6 +1013,8 @@ function CreateNFT({ user }) {
               </div>
 
             </div>
+
+            {/* SUBMIT */}
 
             <div className="pt-2">
               <MotionButton
@@ -790,7 +1046,9 @@ function CreateNFT({ user }) {
         </form>
       </MotionDiv>
 
-      {/* ================= YOUR NFTS ================= */}
+      {/* =====================================================
+          YOUR NFTS
+      ====================================================== */}
 
       <MotionDiv variants={fadeUp}>
 
@@ -802,7 +1060,10 @@ function CreateNFT({ user }) {
 
             <p className="mt-1 text-sm text-gray-500">
               {nfts.length}{" "}
-              {nfts.length === 1 ? "NFT" : "NFTs"} created
+              {nfts.length === 1
+                ? "NFT"
+                : "NFTs"}{" "}
+              created
             </p>
           </div>
 
@@ -812,21 +1073,17 @@ function CreateNFT({ user }) {
         </div>
 
         {loadingNFTs ? (
-
           <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03]">
             <Loader2
               size={28}
               className="animate-spin text-purple-500"
             />
           </div>
-
         ) : nfts.length > 0 ? (
-
           <MotionDiv
             variants={staggerContainer}
             className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3"
           >
-
             {nfts.map((nft) => {
               const currentListing =
                 getNFTListing(nft.id);
@@ -838,13 +1095,14 @@ function CreateNFT({ user }) {
                   className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] transition-colors duration-300 hover:-translate-y-1 hover:border-purple-500/40"
                 >
 
-                  {/* IMAGE */}
+                  {/* NFT IMAGE */}
 
                   <div className="relative aspect-[4/3] overflow-hidden">
 
                     <img
                       src={nft.image_url}
                       alt={nft.name}
+                      loading="lazy"
                       className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                     />
 
@@ -923,14 +1181,17 @@ function CreateNFT({ user }) {
                         <MotionButton
                           type="button"
                           onClick={() =>
-                            handleCancelListing(nft)
+                            handleCancelListing(
+                              nft
+                            )
                           }
                           disabled={
                             cancelling === nft.id
                           }
                           className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/40 px-3 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500 hover:text-white disabled:opacity-50"
                         >
-                          {cancelling === nft.id ? (
+                          {cancelling ===
+                          nft.id ? (
                             <>
                               <Loader2
                                 size={15}
@@ -970,22 +1231,16 @@ function CreateNFT({ user }) {
                       </MotionButton>
 
                     </div>
-
                   </div>
-
                 </MotionDiv>
               );
             })}
-
           </MotionDiv>
-
         ) : (
-
           <MotionDiv
             variants={fadeIn}
             className="rounded-2xl border border-white/10 bg-white/[0.03] py-16 text-center"
           >
-
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-600/10 text-purple-400">
               <ImagePlus size={25} />
             </div>
@@ -997,13 +1252,13 @@ function CreateNFT({ user }) {
             <p className="mt-2 text-sm text-gray-500">
               Create your first NFT using the form above.
             </p>
-
           </MotionDiv>
         )}
-
       </MotionDiv>
 
-      {/* ================= LISTING MODAL ================= */}
+      {/* =====================================================
+          LISTING MODAL
+      ====================================================== */}
 
       {listingNFT && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
@@ -1043,6 +1298,8 @@ function CreateNFT({ user }) {
               className="space-y-5"
             >
 
+              {/* SALE PRICE */}
+
               <div>
                 <label className="mb-2 block text-sm font-medium">
                   Sale Price
@@ -1052,10 +1309,12 @@ function CreateNFT({ user }) {
                   type="number"
                   value={listingForm.price}
                   onChange={(e) =>
-                    setListingForm({
-                      ...listingForm,
-                      price: e.target.value,
-                    })
+                    setListingForm(
+                      (current) => ({
+                        ...current,
+                        price: e.target.value,
+                      })
+                    )
                   }
                   disabled={
                     listing === listingNFT.id
@@ -1067,6 +1326,8 @@ function CreateNFT({ user }) {
                 />
               </div>
 
+              {/* CURRENCY */}
+
               <div>
                 <label className="mb-2 block text-sm font-medium">
                   Currency
@@ -1075,10 +1336,12 @@ function CreateNFT({ user }) {
                 <select
                   value={listingForm.currency}
                   onChange={(e) =>
-                    setListingForm({
-                      ...listingForm,
-                      currency: e.target.value,
-                    })
+                    setListingForm(
+                      (current) => ({
+                        ...current,
+                        currency: e.target.value,
+                      })
+                    )
                   }
                   disabled={
                     listing === listingNFT.id
@@ -1098,6 +1361,8 @@ function CreateNFT({ user }) {
                   </option>
                 </select>
               </div>
+
+              {/* BUTTONS */}
 
               <div className="flex gap-3 pt-2">
 
@@ -1136,14 +1401,10 @@ function CreateNFT({ user }) {
                 </MotionButton>
 
               </div>
-
             </form>
-
           </MotionDiv>
-
         </div>
       )}
-
     </div>
   );
 }
