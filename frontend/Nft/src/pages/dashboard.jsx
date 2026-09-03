@@ -8,8 +8,6 @@ import {
 } from "react-icons/fi";
 import { AnimatePresence, motion } from "framer-motion";
 
-// import Topbar from "../components/topbar";
-
 import {
   MotionDiv,
   MotionButton,
@@ -19,7 +17,8 @@ import {
   staggerContainer,
 } from "../components/motion";
 
-import { trendingNFTs, recentActivity } from "../nft data/nftdata";
+import { recentActivity } from "../nft data/nftdata";
+import { supabase } from "../lib/supabase";
 
 const heroSlides = [
   {
@@ -59,20 +58,32 @@ function Dashboard({ user }) {
 
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  // Get Google user information
+  const [trendingNFTs, setTrendingNFTs] = useState([]);
+
+  const [loadingTrending, setLoadingTrending] = useState(true);
+
+  const [userLikes, setUserLikes] = useState(new Set());
+
+  const [likingNFT, setLikingNFT] = useState(null);
+
+  // =====================================================
+  // USER INFORMATION
+  // =====================================================
+
   const userName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
     "Nimiq User";
-
-  const userEmail = user?.email || "";
 
   const userAvatar =
     user?.user_metadata?.avatar_url ||
     user?.user_metadata?.picture ||
     null;
 
-  // Automatically change hero slide every 5 seconds
+  // =====================================================
+  // HERO SLIDER
+  // =====================================================
+
   useEffect(() => {
     const slider = setInterval(() => {
       setCurrentSlide((prev) =>
@@ -95,15 +106,264 @@ function Dashboard({ user }) {
     );
   };
 
+  // =====================================================
+  // FETCH TRENDING NFTS
+  // =====================================================
+
+  const fetchTrendingNFTs = async () => {
+    try {
+      setLoadingTrending(true);
+
+      // -------------------------------------------------
+      // GET ALL NFTS
+      // -------------------------------------------------
+
+      const { data: nfts, error: nftError } = await supabase
+        .from("nfts")
+        .select("*");
+
+      if (nftError) {
+        console.error("Error fetching NFTs:", nftError);
+        setTrendingNFTs([]);
+        return;
+      }
+
+      // -------------------------------------------------
+      // GET ALL LIKES
+      // -------------------------------------------------
+
+      const { data: likes, error: likesError } = await supabase
+        .from("nft_likes")
+        .select("nft_id, user_id");
+
+      if (likesError) {
+        console.error("Error fetching likes:", likesError);
+        setTrendingNFTs([]);
+        return;
+      }
+
+      // -------------------------------------------------
+      // COUNT LIKES
+      // -------------------------------------------------
+
+      const likeCounts = {};
+
+      (likes || []).forEach((like) => {
+        likeCounts[like.nft_id] =
+          (likeCounts[like.nft_id] || 0) + 1;
+      });
+
+      // -------------------------------------------------
+      // CURRENT USER LIKES
+      // -------------------------------------------------
+
+      const currentUserLikes = new Set(
+        (likes || [])
+          .filter((like) => like.user_id === user?.id)
+          .map((like) => like.nft_id)
+      );
+
+      setUserLikes(currentUserLikes);
+
+      // -------------------------------------------------
+      // FORMAT NFTS
+      // -------------------------------------------------
+
+      const formattedNFTs = (nfts || []).map((nft) => ({
+        ...nft,
+
+        id: nft.id,
+
+        image:
+          nft.image_url ||
+          nft.image ||
+          nft.cover_image ||
+          nft.media_url ||
+          "",
+
+        name:
+          nft.name ||
+          nft.title ||
+          "Unnamed NFT",
+
+        creator:
+          nft.creator_name ||
+          nft.creator ||
+          nft.seller_name ||
+          "Unknown Creator",
+
+        price:
+          nft.price ??
+          nft.listing_price ??
+          0,
+
+        likes: likeCounts[nft.id] || 0,
+      }));
+
+      // -------------------------------------------------
+      // SORT BY LIKES
+      // -------------------------------------------------
+
+      const sortedNFTs = formattedNFTs
+        .sort((a, b) => {
+          if (b.likes !== a.likes) {
+            return b.likes - a.likes;
+          }
+
+          // If likes are equal, newer NFT first
+          return (
+            new Date(b.created_at || 0) -
+            new Date(a.created_at || 0)
+          );
+        })
+        .slice(0, 6);
+
+      // -------------------------------------------------
+      // RANK
+      // -------------------------------------------------
+
+      const rankedNFTs = sortedNFTs.map((nft, index) => ({
+        ...nft,
+        rank: index + 1,
+      }));
+
+      setTrendingNFTs(rankedNFTs);
+    } catch (error) {
+      console.error("Trending NFT error:", error);
+      setTrendingNFTs([]);
+    } finally {
+      setLoadingTrending(false);
+    }
+  };
+
+  // =====================================================
+  // LOAD TRENDING
+  // =====================================================
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchTrendingNFTs();
+    }
+  }, [user?.id]);
+
+  // =====================================================
+  // LIKE / UNLIKE
+  // =====================================================
+
+  const handleLike = async (nftId) => {
+    if (!user?.id) {
+      navigate("/login");
+      return;
+    }
+
+    if (likingNFT === nftId) return;
+
+    try {
+      setLikingNFT(nftId);
+
+      const alreadyLiked = userLikes.has(nftId);
+
+      // =================================================
+      // UNLIKE
+      // =================================================
+
+      if (alreadyLiked) {
+        const { error } = await supabase
+          .from("nft_likes")
+          .delete()
+          .eq("nft_id", nftId)
+          .eq("user_id", user.id);
+
+        if (error) {
+          console.error("Unlike error:", error);
+          return;
+        }
+
+        setUserLikes((previous) => {
+          const updated = new Set(previous);
+          updated.delete(nftId);
+          return updated;
+        });
+
+        // Update count and re-rank
+        setTrendingNFTs((previous) => {
+          const updated = previous.map((nft) =>
+            nft.id === nftId
+              ? {
+                  ...nft,
+                  likes: Math.max(0, nft.likes - 1),
+                }
+              : nft
+          );
+
+          return updated
+            .sort((a, b) => b.likes - a.likes)
+            .map((nft, index) => ({
+              ...nft,
+              rank: index + 1,
+            }));
+        });
+
+        return;
+      }
+
+      // =================================================
+      // LIKE
+      // =================================================
+
+      const { error } = await supabase
+        .from("nft_likes")
+        .insert({
+          nft_id: nftId,
+          user_id: user.id,
+        });
+
+      if (error) {
+        console.error("Like error:", error);
+        return;
+      }
+
+      setUserLikes((previous) => {
+        const updated = new Set(previous);
+        updated.add(nftId);
+        return updated;
+      });
+
+      // Update count and re-rank
+      setTrendingNFTs((previous) => {
+        const updated = previous.map((nft) =>
+          nft.id === nftId
+            ? {
+                ...nft,
+                likes: nft.likes + 1,
+              }
+            : nft
+        );
+
+        return updated
+          .sort((a, b) => b.likes - a.likes)
+          .map((nft, index) => ({
+            ...nft,
+            rank: index + 1,
+          }));
+      });
+    } catch (error) {
+      console.error("Like error:", error);
+    } finally {
+      setLikingNFT(null);
+    }
+  };
+
   const slide = heroSlides[currentSlide];
 
   return (
     <div className="min-h-screen bg-[#08080f] text-white">
-      {/* <Topbar /> */}
 
       <main className="p-5 lg:p-7">
 
-        {/* ================= USER WELCOME ================= */}
+        {/* =====================================================
+            USER WELCOME
+        ===================================================== */}
 
         <section className="mb-6 flex items-center justify-between">
 
@@ -115,13 +375,10 @@ function Dashboard({ user }) {
             <h2 className="mt-1 text-2xl font-bold sm:text-3xl">
               {userName}
             </h2>
-
-           
           </div>
 
-          {/* User avatar */}
-
           <div className="hidden sm:block">
+
             {userAvatar ? (
               <img
                 src={userAvatar}
@@ -133,15 +390,16 @@ function Dashboard({ user }) {
                 {userName.charAt(0).toUpperCase()}
               </div>
             )}
+
           </div>
 
         </section>
 
-        {/* ================= HERO ================= */}
+        {/* =====================================================
+            HERO
+        ===================================================== */}
 
         <section className="relative min-h-[420px] overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#250047] via-[#17002e] to-[#090914]">
-
-          {/* Background glow */}
 
           <motion.div
             animate={{
@@ -169,8 +427,6 @@ function Dashboard({ user }) {
             className="absolute -bottom-20 right-40 h-64 w-64 rounded-full bg-pink-600/10 blur-3xl"
           />
 
-          {/* ================= SLIDE ================= */}
-
           <AnimatePresence mode="wait">
 
             <motion.div
@@ -181,8 +437,6 @@ function Dashboard({ user }) {
               transition={{ duration: 0.5 }}
               className="relative z-10 flex min-h-[420px] items-center p-7 lg:p-10"
             >
-
-              {/* TEXT */}
 
               <motion.div
                 variants={slideRight}
@@ -224,8 +478,6 @@ function Dashboard({ user }) {
                   {slide.description}
                 </motion.p>
 
-                {/* BUTTONS */}
-
                 <motion.div
                   variants={fadeUp}
                   initial="hidden"
@@ -241,17 +493,16 @@ function Dashboard({ user }) {
                     Explore Market
                   </MotionButton>
 
-               <MotionButton
-  onClick={() => navigate("/create-nft")}
-  className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold hover:bg-white/10"
->
-  Create Now
-</MotionButton>
+                  <MotionButton
+                    onClick={() => navigate("/create-nft")}
+                    className="rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold hover:bg-white/10"
+                  >
+                    Create Now
+                  </MotionButton>
+
                 </motion.div>
 
               </motion.div>
-
-              {/* NFT IMAGE */}
 
               <motion.div
                 variants={slideLeft}
@@ -313,8 +564,6 @@ function Dashboard({ user }) {
 
           </AnimatePresence>
 
-          {/* PREVIOUS */}
-
           <MotionButton
             onClick={previousSlide}
             className="absolute left-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur hover:bg-black/60"
@@ -322,16 +571,12 @@ function Dashboard({ user }) {
             <FiChevronLeft size={18} />
           </MotionButton>
 
-          {/* NEXT */}
-
           <MotionButton
             onClick={nextSlide}
             className="absolute right-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur hover:bg-black/60"
           >
             <FiChevronRight size={18} />
           </MotionButton>
-
-          {/* DOTS */}
 
           <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 gap-2">
 
@@ -353,7 +598,9 @@ function Dashboard({ user }) {
 
         </section>
 
-        {/* ================= TRENDING ================= */}
+        {/* =====================================================
+            TRENDING
+        ===================================================== */}
 
         <MotionDiv
           variants={fadeUp}
@@ -383,34 +630,86 @@ function Dashboard({ user }) {
 
           </div>
 
-          <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.2 }}
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
-          >
+          {/* LOADING */}
 
-            {trendingNFTs.map((nft) => (
+          {loadingTrending && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+
+              {[1, 2, 3, 4, 5, 6].map((item) => (
+                <div
+                  key={item}
+                  className="aspect-square animate-pulse rounded-xl border border-white/5 bg-[#101017]"
+                />
+              ))}
+
+            </div>
+          )}
+
+          {/* EMPTY */}
+
+          {!loadingTrending &&
+            trendingNFTs.length === 0 && (
+              <div className="rounded-xl border border-white/5 bg-[#101017] p-10 text-center">
+
+                <p className="text-gray-400">
+                  No trending NFTs yet.
+                </p>
+
+                <p className="mt-2 text-sm text-gray-600">
+                  Be the first to like a collectible.
+                </p>
+
+              </div>
+            )}
+
+          {/* NFTS */}
+
+          {!loadingTrending &&
+            trendingNFTs.length > 0 && (
               <motion.div
-                key={nft.id}
-                variants={fadeUp}
+                variants={staggerContainer}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{
+                  once: true,
+                  amount: 0.2,
+                }}
+                className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
               >
-                <NFTCard nft={nft} />
-              </motion.div>
-            ))}
 
-          </motion.div>
+                {trendingNFTs.map((nft) => (
+                  <motion.div
+                    key={nft.id}
+                    variants={fadeUp}
+                  >
+
+                    <NFTCard
+                      nft={nft}
+                      liked={userLikes.has(nft.id)}
+                      liking={likingNFT === nft.id}
+                      onLike={() => handleLike(nft.id)}
+                    />
+
+                  </motion.div>
+                ))}
+
+              </motion.div>
+            )}
 
         </MotionDiv>
 
-        {/* ================= LOWER DASHBOARD ================= */}
+        {/* =====================================================
+            LOWER DASHBOARD
+        ===================================================== */}
 
         <motion.section
           variants={fadeUp}
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, amount: 0.2 }}
+          viewport={{
+            once: true,
+            amount: 0.2,
+          }}
           className="mt-8 grid gap-5 lg:grid-cols-2"
         >
 
@@ -421,16 +720,21 @@ function Dashboard({ user }) {
         </motion.section>
 
       </main>
+
     </div>
   );
 }
-
 
 /* =====================================================
    NFT CARD
 ===================================================== */
 
-function NFTCard({ nft }) {
+function NFTCard({
+  nft,
+  liked,
+  liking,
+  onLike,
+}) {
   return (
     <motion.article
       whileHover={{
@@ -453,17 +757,55 @@ function NFTCard({ nft }) {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
 
+        {/* RANK */}
+
         <div className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-md bg-black/60 text-xs font-bold backdrop-blur">
-          {nft.rank}
+          #{nft.rank}
         </div>
 
+        {/* LIKE BUTTON */}
+
         <motion.button
-          whileHover={{ scale: 1.15 }}
-          whileTap={{ scale: 0.9 }}
-          className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 backdrop-blur hover:bg-black/80"
+          whileHover={{
+            scale: 1.15,
+          }}
+          whileTap={{
+            scale: 0.9,
+          }}
+          onClick={onLike}
+          disabled={liking}
+          className={`absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full backdrop-blur transition ${
+            liked
+              ? "bg-purple-600 text-white"
+              : "bg-black/50 text-white hover:bg-black/80"
+          }`}
         >
-          <FiHeart size={15} />
+
+          <FiHeart
+            size={15}
+            className={liked ? "fill-current" : ""}
+          />
+
         </motion.button>
+
+        {/* LIKE COUNT */}
+
+        <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-xs backdrop-blur">
+
+          <FiHeart
+            size={12}
+            className={
+              liked
+                ? "fill-current text-purple-400"
+                : ""
+            }
+          />
+
+          <span>
+            {nft.likes}
+          </span>
+
+        </div>
 
       </div>
 
@@ -473,7 +815,7 @@ function NFTCard({ nft }) {
           {nft.name}
         </h3>
 
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 truncate text-xs text-gray-500">
           by {nft.creator}
         </p>
 
@@ -491,8 +833,12 @@ function NFTCard({ nft }) {
 
           </div>
 
-          <span className="text-xs font-medium text-green-400">
-            {nft.change}
+          <span className="flex items-center gap-1 text-xs font-medium text-purple-400">
+
+            <FiTrendingUp size={13} />
+
+            #{nft.rank}
+
           </span>
 
         </div>
@@ -503,7 +849,6 @@ function NFTCard({ nft }) {
   );
 }
 
-
 /* =====================================================
    MARKET OVERVIEW
 ===================================================== */
@@ -511,8 +856,12 @@ function NFTCard({ nft }) {
 function MarketOverview() {
   return (
     <motion.div
-      whileHover={{ y: -3 }}
-      transition={{ duration: 0.2 }}
+      whileHover={{
+        y: -3,
+      }}
+      transition={{
+        duration: 0.2,
+      }}
       className="rounded-xl border border-white/5 bg-[#101017] p-5"
     >
 
@@ -594,12 +943,15 @@ function MarketOverview() {
   );
 }
 
-
 /* =====================================================
    STAT
 ===================================================== */
 
-function Stat({ label, value, change }) {
+function Stat({
+  label,
+  value,
+  change,
+}) {
   return (
     <div>
 
@@ -619,7 +971,6 @@ function Stat({ label, value, change }) {
   );
 }
 
-
 /* =====================================================
    RECENT ACTIVITY
 ===================================================== */
@@ -627,8 +978,12 @@ function Stat({ label, value, change }) {
 function RecentActivity() {
   return (
     <motion.div
-      whileHover={{ y: -3 }}
-      transition={{ duration: 0.2 }}
+      whileHover={{
+        y: -3,
+      }}
+      transition={{
+        duration: 0.2,
+      }}
       className="rounded-xl border border-white/5 bg-[#101017] p-5"
     >
 
@@ -649,9 +1004,17 @@ function RecentActivity() {
         {recentActivity.map((activity, index) => (
           <motion.div
             key={activity.id}
-            initial={{ opacity: 0, x: 20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
+            initial={{
+              opacity: 0,
+              x: 20,
+            }}
+            whileInView={{
+              opacity: 1,
+              x: 0,
+            }}
+            viewport={{
+              once: true,
+            }}
             transition={{
               duration: 0.4,
               delay: index * 0.08,

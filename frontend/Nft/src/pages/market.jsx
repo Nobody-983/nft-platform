@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Heart, Search, Plus, ArrowUpRight, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -11,6 +11,7 @@ import {
 } from "../components/motion";
 
 import { getMarketplaceListings } from "../services/marketService";
+import { supabase } from "../lib/supabase";
 
 const categories = [
   "All",
@@ -26,12 +27,56 @@ function Marketplace() {
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [favorites, setFavorites] = useState([]);
+
+  const [likedNFTs, setLikedNFTs] = useState(new Set());
+  const [likeCounts, setLikeCounts] = useState({});
+  const [likingNFT, setLikingNFT] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // ================= FETCH MARKETPLACE =================
+  // =====================================================
+  // LOAD LIKES
+  // =====================================================
+
+  const loadLikes = async () => {
+    try {
+      const { data: likes, error: likesError } = await supabase
+        .from("nft_likes")
+        .select("nft_id, user_id");
+
+      if (likesError) {
+        console.error("LOAD LIKES ERROR:", likesError);
+        return;
+      }
+
+      const counts = {};
+      const userLiked = new Set();
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      likes?.forEach((like) => {
+        const id = String(like.nft_id);
+
+        counts[id] = (counts[id] || 0) + 1;
+
+        if (user && like.user_id === user.id) {
+          userLiked.add(id);
+        }
+      });
+
+      setLikeCounts(counts);
+      setLikedNFTs(userLiked);
+    } catch (err) {
+      console.error("LOAD LIKES ERROR:", err);
+    }
+  };
+
+  // =====================================================
+  // LOAD MARKETPLACE
+  // =====================================================
 
   useEffect(() => {
     const fetchMarketplace = async () => {
@@ -42,8 +87,10 @@ function Marketplace() {
         const data = await getMarketplaceListings();
 
         setItems(data || []);
+
+        await loadLikes();
       } catch (err) {
-        console.error("Marketplace error:", err);
+        console.error("MARKETPLACE ERROR:", err);
         setError("Unable to load marketplace.");
       } finally {
         setLoading(false);
@@ -53,7 +100,122 @@ function Marketplace() {
     fetchMarketplace();
   }, []);
 
-  // ================= FILTER =================
+  // =====================================================
+  // LIKE / UNLIKE
+  // =====================================================
+
+  const toggleLike = async (nftId) => {
+    const id = String(nftId);
+
+    if (likingNFT === id) return;
+
+    try {
+      setLikingNFT(id);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        navigate("/login");
+        return;
+      }
+
+      const currentlyLiked = likedNFTs.has(id);
+
+      // =================================================
+      // OPTIMISTIC UI
+      // Change the heart immediately
+      // =================================================
+
+      if (currentlyLiked) {
+        setLikedNFTs((previous) => {
+          const updated = new Set(previous);
+          updated.delete(id);
+          return updated;
+        });
+
+        setLikeCounts((previous) => ({
+          ...previous,
+          [id]: Math.max(0, (previous[id] || 0) - 1),
+        }));
+
+        const { error: deleteError } = await supabase
+          .from("nft_likes")
+          .delete()
+          .eq("nft_id", nftId)
+          .eq("user_id", user.id);
+
+        if (deleteError) {
+          console.error("UNLIKE ERROR:", deleteError);
+
+          // Roll UI back if database failed
+          setLikedNFTs((previous) => {
+            const updated = new Set(previous);
+            updated.add(id);
+            return updated;
+          });
+
+          setLikeCounts((previous) => ({
+            ...previous,
+            [id]: (previous[id] || 0) + 1,
+          }));
+
+          return;
+        }
+
+        return;
+      }
+
+      // =================================================
+      // LIKE
+      // =================================================
+
+      setLikedNFTs((previous) => {
+        const updated = new Set(previous);
+        updated.add(id);
+        return updated;
+      });
+
+      setLikeCounts((previous) => ({
+        ...previous,
+        [id]: (previous[id] || 0) + 1,
+      }));
+
+      const { error: insertError } = await supabase
+        .from("nft_likes")
+        .insert({
+          nft_id: nftId,
+          user_id: user.id,
+        });
+
+      if (insertError) {
+        console.error("LIKE INSERT ERROR:", insertError);
+
+        // Roll UI back
+        setLikedNFTs((previous) => {
+          const updated = new Set(previous);
+          updated.delete(id);
+          return updated;
+        });
+
+        setLikeCounts((previous) => ({
+          ...previous,
+          [id]: Math.max(0, (previous[id] || 0) - 1),
+        }));
+
+        return;
+      }
+    } catch (err) {
+      console.error("TOGGLE LIKE ERROR:", err);
+    } finally {
+      setLikingNFT(null);
+    }
+  };
+
+  // =====================================================
+  // FILTER
+  // =====================================================
 
   const filteredItems = items.filter((item) => {
     const nft = item.nfts;
@@ -81,22 +243,10 @@ function Marketplace() {
     return matchesSearch && matchesCategory;
   });
 
-  // ================= FAVORITE =================
-
-  const toggleFavorite = (id) => {
-    setFavorites((currentFavorites) =>
-      currentFavorites.includes(id)
-        ? currentFavorites.filter(
-            (favoriteId) => favoriteId !== id
-          )
-        : [...currentFavorites, id]
-    );
-  };
-
   return (
     <div className="min-h-screen bg-[#0b0b12] px-4 py-6 text-white sm:px-6">
 
-      {/* ================= HEADER ================= */}
+      {/* HEADER */}
 
       <MotionDiv
         variants={fadeUp}
@@ -121,7 +271,7 @@ function Marketplace() {
         </MotionButton>
       </MotionDiv>
 
-      {/* ================= SEARCH + CATEGORIES ================= */}
+      {/* SEARCH + CATEGORIES */}
 
       <MotionDiv
         variants={fadeUp}
@@ -159,7 +309,7 @@ function Marketplace() {
         </div>
       </MotionDiv>
 
-      {/* ================= LOADING ================= */}
+      {/* LOADING */}
 
       {loading && (
         <div className="flex min-h-[300px] items-center justify-center">
@@ -170,7 +320,7 @@ function Marketplace() {
         </div>
       )}
 
-      {/* ================= ERROR ================= */}
+      {/* ERROR */}
 
       {!loading && error && (
         <MotionDiv
@@ -187,7 +337,7 @@ function Marketplace() {
         </MotionDiv>
       )}
 
-      {/* ================= MARKETPLACE ================= */}
+      {/* NFT GRID */}
 
       {!loading &&
         !error &&
@@ -205,15 +355,23 @@ function Marketplace() {
                 seller?.username ||
                 "Unknown creator";
 
+              const nftId = nft.id;
+              const id = String(nftId);
+
+              const isLiked = likedNFTs.has(id);
+              const totalLikes = likeCounts[id] || 0;
+
               return (
                 <MotionDiv
                   key={item.id}
                   variants={fadeUp}
                   className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] transition-colors duration-300 hover:-translate-y-1 hover:border-purple-500/40"
                 >
+
                   {/* IMAGE */}
 
                   <div className="relative aspect-[4/3] overflow-hidden">
+
                     <img
                       src={nft.image_url}
                       alt={nft.name}
@@ -228,30 +386,66 @@ function Marketplace() {
                       {nft.category}
                     </div>
 
-                    {/* FAVORITE */}
+                    {/* LIKE BUTTON */}
 
-                    <MotionButton
-                      onClick={() => toggleFavorite(item.id)}
-                      className={`absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-md transition ${
-                        favorites.includes(item.id)
-                          ? "bg-purple-600 text-white"
-                          : "bg-black/60 text-white hover:bg-purple-600"
+                    <button
+                      type="button"
+                      onClick={() => toggleLike(nftId)}
+                      disabled={likingNFT === id}
+                      aria-label={
+                        isLiked
+                          ? "Unlike NFT"
+                          : "Like NFT"
+                      }
+                      className={`absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-md transition-all duration-200 ${
+                        isLiked
+                          ? "bg-purple-600 text-white scale-105"
+                          : "bg-black/60 text-white hover:bg-purple-600 hover:scale-105"
                       }`}
                     >
+                      {likingNFT === id ? (
+                        <Loader2
+                          size={18}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <Heart
+                          size={18}
+                          strokeWidth={2}
+                          fill={
+                            isLiked
+                              ? "currentColor"
+                              : "none"
+                          }
+                        />
+                      )}
+                    </button>
+
+                    {/* LIKE COUNT */}
+
+                    <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1.5 text-xs backdrop-blur-md">
                       <Heart
-                        size={17}
+                        size={13}
                         fill={
-                          favorites.includes(item.id)
+                          isLiked
                             ? "currentColor"
                             : "none"
                         }
+                        className={
+                          isLiked
+                            ? "text-purple-400"
+                            : "text-white"
+                        }
                       />
-                    </MotionButton>
+
+                      <span>{totalLikes}</span>
+                    </div>
                   </div>
 
                   {/* DETAILS */}
 
                   <div className="p-5">
+
                     <div className="mb-4">
                       <h2 className="text-lg font-semibold">
                         {nft.name}
@@ -263,6 +457,7 @@ function Marketplace() {
                     </div>
 
                     <div className="flex items-end justify-between">
+
                       <div>
                         <p className="text-xs text-gray-500">
                           Current price
@@ -273,8 +468,6 @@ function Marketplace() {
                         </p>
                       </div>
 
-                      {/* VIEW NFT */}
-
                       <MotionButton
                         onClick={() =>
                           navigate(`/nft/${nft.id}`)
@@ -284,6 +477,7 @@ function Marketplace() {
                         View NFT
                         <ArrowUpRight size={15} />
                       </MotionButton>
+
                     </div>
                   </div>
                 </MotionDiv>
@@ -292,7 +486,7 @@ function Marketplace() {
           </MotionDiv>
         )}
 
-      {/* ================= EMPTY ================= */}
+      {/* EMPTY */}
 
       {!loading &&
         !error &&

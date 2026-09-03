@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import {
   ImagePlus,
@@ -77,24 +76,31 @@ function CreateNFT({ user }) {
   // ================= FETCH USER NFTS =================
 
   const fetchNFTs = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setLoadingNFTs(false);
+      return;
+    }
 
     setLoadingNFTs(true);
 
-    const { data, error } = await supabase
-      .from("nfts")
-      .select("*")
-      .eq("creator_id", user.id)
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("nfts")
+        .select("*")
+        .eq("creator_id", user.id)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Error fetching NFTs:", error);
-      setError("Unable to load your NFTs.");
-    } else {
+      if (error) {
+        throw error;
+      }
+
       setNfts(data || []);
+    } catch (err) {
+      console.error("Error fetching NFTs:", err);
+      setError("Unable to load your NFTs.");
+    } finally {
+      setLoadingNFTs(false);
     }
-
-    setLoadingNFTs(false);
   };
 
   // ================= FETCH USER LISTINGS =================
@@ -115,7 +121,7 @@ function CreateNFT({ user }) {
     fetchListings();
   }, [user]);
 
-  // ================= FIND LISTING =================
+  // ================= FIND ACTIVE LISTING =================
 
   const getNFTListing = (nftId) => {
     return listings.find(
@@ -128,10 +134,12 @@ function CreateNFT({ user }) {
   // ================= INPUT =================
 
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }));
   };
 
   // ================= IMAGE =================
@@ -162,12 +170,15 @@ function CreateNFT({ user }) {
       return;
     }
 
-    setImage(file);
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
 
     const objectUrl = URL.createObjectURL(file);
+
+    setImage(file);
     setPreview(objectUrl);
 
-    // Allow selecting the same image again later
     e.target.value = "";
   };
 
@@ -212,10 +223,9 @@ function CreateNFT({ user }) {
 
     try {
       setLoading(true);
+      setUploading(true);
 
       // ================= UPLOAD IMAGE =================
-
-      setUploading(true);
 
       let imageUrl;
 
@@ -237,7 +247,7 @@ function CreateNFT({ user }) {
         setUploading(false);
       }
 
-      // ================= CREATE NFT RECORD =================
+      // ================= CREATE NFT =================
 
       const newNFT = await createNFT({
         creator_id: user.id,
@@ -315,6 +325,11 @@ function CreateNFT({ user }) {
     setError("");
     setSuccess("");
 
+    if (!user?.id) {
+      setError("You must be logged in to list an NFT.");
+      return;
+    }
+
     if (
       !listingForm.price ||
       Number(listingForm.price) <= 0
@@ -326,9 +341,14 @@ function CreateNFT({ user }) {
     try {
       setListing(listingNFT.id);
 
+      /*
+       * seller_id is intentionally NOT passed here.
+       *
+       * marketService gets the authenticated Supabase
+       * user directly using supabase.auth.getUser().
+       */
       const newListing = await createListing({
         nft_id: listingNFT.id,
-        seller_id: user.id,
         price: Number(listingForm.price),
         currency: listingForm.currency,
       });
@@ -380,8 +400,47 @@ function CreateNFT({ user }) {
       setError("");
       setSuccess("");
 
-      await cancelListing(currentListing.id);
+      // Get the actual authenticated Supabase user
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser();
 
+      if (authError) {
+        throw authError;
+      }
+
+      if (!authUser) {
+        throw new Error(
+          "Your session has expired. Please log in again."
+        );
+      }
+
+      console.log(
+        "Authenticated user:",
+        authUser.id
+      );
+
+      console.log(
+        "Listing seller:",
+        currentListing.seller_id
+      );
+
+      // Make sure this listing actually belongs to
+      // the currently authenticated user.
+      if (
+        authUser.id !== currentListing.seller_id
+      ) {
+        throw new Error(
+          "You are not the owner of this listing."
+        );
+      }
+
+      await cancelListing(
+        currentListing.id
+      );
+
+      // Update local state immediately
       setListings((currentListings) =>
         currentListings.map((item) =>
           item.id === currentListing.id
@@ -404,7 +463,7 @@ function CreateNFT({ user }) {
 
       setError(
         err?.message ||
-          "Unable to cancel this listing."
+          "Unable to remove this listing."
       );
     } finally {
       setCancelling(null);
@@ -462,6 +521,16 @@ function CreateNFT({ user }) {
   const handleViewNFT = (nft) => {
     window.location.href = `/nft/${nft.id}`;
   };
+
+  // ================= CLEAN PREVIEW =================
+
+  useEffect(() => {
+    return () => {
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
 
   return (
     <div className="min-h-screen bg-[#0b0b12] px-4 py-6 text-white sm:px-6">
@@ -759,9 +828,8 @@ function CreateNFT({ user }) {
           >
 
             {nfts.map((nft) => {
-              const currentListing = getNFTListing(
-                nft.id
-              );
+              const currentListing =
+                getNFTListing(nft.id);
 
               return (
                 <MotionDiv
@@ -960,7 +1028,9 @@ function CreateNFT({ user }) {
               <button
                 type="button"
                 onClick={closeListingForm}
-                disabled={listing === listingNFT.id}
+                disabled={
+                  listing === listingNFT.id
+                }
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <X size={18} />
@@ -987,7 +1057,9 @@ function CreateNFT({ user }) {
                       price: e.target.value,
                     })
                   }
-                  disabled={listing === listingNFT.id}
+                  disabled={
+                    listing === listingNFT.id
+                  }
                   min="0"
                   step="0.00000001"
                   placeholder="Enter price"
@@ -1008,7 +1080,9 @@ function CreateNFT({ user }) {
                       currency: e.target.value,
                     })
                   }
-                  disabled={listing === listingNFT.id}
+                  disabled={
+                    listing === listingNFT.id
+                  }
                   className="w-full rounded-xl border border-white/10 bg-[#0b0b12] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:opacity-60"
                 >
                   <option value="NIM">
@@ -1030,7 +1104,9 @@ function CreateNFT({ user }) {
                 <MotionButton
                   type="button"
                   onClick={closeListingForm}
-                  disabled={listing === listingNFT.id}
+                  disabled={
+                    listing === listingNFT.id
+                  }
                   className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-gray-300 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
                 >
                   Cancel
@@ -1038,7 +1114,9 @@ function CreateNFT({ user }) {
 
                 <MotionButton
                   type="submit"
-                  disabled={listing === listingNFT.id}
+                  disabled={
+                    listing === listingNFT.id
+                  }
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {listing === listingNFT.id ? (

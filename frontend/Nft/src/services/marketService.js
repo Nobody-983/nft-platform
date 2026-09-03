@@ -36,33 +36,41 @@ export async function getMarketplaceListings() {
 
 export async function createListing({
   nft_id,
-  seller_id,
   price,
-  currency,
+  currency = "NIM",
 }) {
   if (!nft_id) {
     throw new Error("NFT ID is required.");
-  }
-
-  if (!seller_id) {
-    throw new Error("Seller ID is required.");
   }
 
   if (!price || Number(price) <= 0) {
     throw new Error("Please enter a valid price.");
   }
 
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user) {
+    throw new Error(
+      "You must be logged in to create a listing."
+    );
+  }
+
   const { data, error } = await supabase
     .from("marketplace_listings")
-    .insert([
-      {
-        nft_id,
-        seller_id,
-        price: Number(price),
-        currency,
-        status: "active",
-      },
-    ])
+    .insert({
+      nft_id,
+      seller_id: user.id,
+      price: Number(price),
+      currency,
+      status: "active",
+    })
     .select()
     .single();
 
@@ -80,6 +88,21 @@ export async function cancelListing(listingId) {
     throw new Error("Listing ID is required.");
   }
 
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user) {
+    throw new Error(
+      "You must be logged in to cancel a listing."
+    );
+  }
+
   const { data, error } = await supabase
     .from("marketplace_listings")
     .update({
@@ -87,6 +110,7 @@ export async function cancelListing(listingId) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", listingId)
+    .eq("seller_id", user.id)
     .select()
     .single();
 
