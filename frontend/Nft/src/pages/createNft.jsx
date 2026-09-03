@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import {
   ImagePlus,
@@ -49,6 +50,7 @@ function CreateNFT({ user }) {
   const [listings, setListings] = useState([]);
 
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [loadingNFTs, setLoadingNFTs] = useState(true);
 
   const [deleting, setDeleting] = useState(null);
@@ -150,19 +152,30 @@ function CreateNFT({ user }) {
 
     if (!allowedTypes.includes(file.type)) {
       setError("Please upload a PNG, JPG or WEBP image.");
+      e.target.value = "";
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
       setError("Image must be less than 5MB.");
+      e.target.value = "";
       return;
     }
 
     setImage(file);
-    setPreview(URL.createObjectURL(file));
+
+    const objectUrl = URL.createObjectURL(file);
+    setPreview(objectUrl);
+
+    // Allow selecting the same image again later
+    e.target.value = "";
   };
 
   const removeImage = () => {
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
+
     setImage(null);
     setPreview("");
   };
@@ -171,6 +184,8 @@ function CreateNFT({ user }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (loading) return;
 
     setError("");
     setSuccess("");
@@ -198,10 +213,31 @@ function CreateNFT({ user }) {
     try {
       setLoading(true);
 
-      const imageUrl = await uploadNFTImage(
-        image,
-        user.id
-      );
+      // ================= UPLOAD IMAGE =================
+
+      setUploading(true);
+
+      let imageUrl;
+
+      try {
+        imageUrl = await uploadNFTImage(
+          image,
+          user.id
+        );
+      } catch (uploadError) {
+        console.error(
+          "NFT image upload error:",
+          uploadError
+        );
+
+        throw new Error(
+          "Image upload failed. Please check your internet connection and try again."
+        );
+      } finally {
+        setUploading(false);
+      }
+
+      // ================= CREATE NFT RECORD =================
 
       const newNFT = await createNFT({
         creator_id: user.id,
@@ -237,6 +273,7 @@ function CreateNFT({ user }) {
           "Something went wrong while creating your NFT."
       );
     } finally {
+      setUploading(false);
       setLoading(false);
     }
   };
@@ -258,6 +295,8 @@ function CreateNFT({ user }) {
   // ================= CLOSE LISTING FORM =================
 
   const closeListingForm = () => {
+    if (listing) return;
+
     setListingNFT(null);
 
     setListingForm({
@@ -271,7 +310,7 @@ function CreateNFT({ user }) {
   const handleListNFT = async (e) => {
     e.preventDefault();
 
-    if (!listingNFT) return;
+    if (!listingNFT || listing) return;
 
     setError("");
     setSuccess("");
@@ -299,10 +338,17 @@ function CreateNFT({ user }) {
         ...currentListings,
       ]);
 
-      closeListingForm();
+      const nftName = listingNFT.name;
+
+      setListingNFT(null);
+
+      setListingForm({
+        price: "",
+        currency: "NIM",
+      });
 
       setSuccess(
-        `"${listingNFT.name}" is now listed for sale.`
+        `"${nftName}" is now listed for sale.`
       );
     } catch (err) {
       console.error("NFT listing error:", err);
@@ -321,7 +367,7 @@ function CreateNFT({ user }) {
   const handleCancelListing = async (nft) => {
     const currentListing = getNFTListing(nft.id);
 
-    if (!currentListing) return;
+    if (!currentListing || cancelling) return;
 
     const confirmed = window.confirm(
       `Remove "${nft.name}" from the marketplace?`
@@ -377,6 +423,8 @@ function CreateNFT({ user }) {
       return;
     }
 
+    if (deleting) return;
+
     const confirmed = window.confirm(
       `Are you sure you want to delete "${nft.name}"?`
     );
@@ -407,6 +455,12 @@ function CreateNFT({ user }) {
     } finally {
       setDeleting(null);
     }
+  };
+
+  // ================= VIEW NFT =================
+
+  const handleViewNFT = (nft) => {
+    window.location.href = `/nft/${nft.id}`;
   };
 
   return (
@@ -494,7 +548,8 @@ function CreateNFT({ user }) {
                 <MotionButton
                   type="button"
                   onClick={removeImage}
-                  className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-white backdrop-blur-md transition hover:bg-red-500"
+                  disabled={loading}
+                  className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-white backdrop-blur-md transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <X size={17} />
                 </MotionButton>
@@ -521,6 +576,7 @@ function CreateNFT({ user }) {
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   onChange={handleImageChange}
+                  disabled={loading}
                   className="hidden"
                 />
 
@@ -542,8 +598,9 @@ function CreateNFT({ user }) {
                 name="name"
                 value={form.name}
                 onChange={handleChange}
+                disabled={loading}
                 placeholder="Enter NFT name"
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
 
@@ -556,9 +613,10 @@ function CreateNFT({ user }) {
                 name="description"
                 value={form.description}
                 onChange={handleChange}
+                disabled={loading}
                 rows={5}
                 placeholder="Describe your NFT..."
-                className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500"
+                className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
 
@@ -571,7 +629,8 @@ function CreateNFT({ user }) {
                 name="category"
                 value={form.category}
                 onChange={handleChange}
-                className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500"
+                disabled={loading}
+                className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {categories.map((category) => (
                   <option
@@ -596,10 +655,11 @@ function CreateNFT({ user }) {
                   name="price"
                   value={form.price}
                   onChange={handleChange}
+                  disabled={loading}
                   min="0"
                   step="0.00000001"
                   placeholder="0.00"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500"
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
 
@@ -612,7 +672,8 @@ function CreateNFT({ user }) {
                   name="currency"
                   value={form.currency}
                   onChange={handleChange}
-                  className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="NIM">
                     NIM
@@ -642,7 +703,10 @@ function CreateNFT({ user }) {
                       size={18}
                       className="animate-spin"
                     />
-                    Creating...
+
+                    {uploading
+                      ? "Uploading image..."
+                      : "Creating..."}
                   </>
                 ) : (
                   <>
@@ -828,6 +892,9 @@ function CreateNFT({ user }) {
 
                       <MotionButton
                         type="button"
+                        onClick={() =>
+                          handleViewNFT(nft)
+                        }
                         className="flex items-center gap-1.5 rounded-xl border border-purple-500/40 px-3 py-2 text-sm font-medium text-purple-400 transition hover:bg-purple-600 hover:text-white"
                       >
                         View
@@ -893,7 +960,8 @@ function CreateNFT({ user }) {
               <button
                 type="button"
                 onClick={closeListingForm}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition hover:bg-white/10 hover:text-white"
+                disabled={listing === listingNFT.id}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <X size={18} />
               </button>
@@ -919,10 +987,11 @@ function CreateNFT({ user }) {
                       price: e.target.value,
                     })
                   }
+                  disabled={listing === listingNFT.id}
                   min="0"
                   step="0.00000001"
                   placeholder="Enter price"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500"
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:opacity-60"
                 />
               </div>
 
@@ -939,7 +1008,8 @@ function CreateNFT({ user }) {
                       currency: e.target.value,
                     })
                   }
-                  className="w-full rounded-xl border border-white/10 bg-[#0b0b12] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500"
+                  disabled={listing === listingNFT.id}
+                  className="w-full rounded-xl border border-white/10 bg-[#0b0b12] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:opacity-60"
                 >
                   <option value="NIM">
                     NIM
@@ -960,7 +1030,8 @@ function CreateNFT({ user }) {
                 <MotionButton
                   type="button"
                   onClick={closeListingForm}
-                  className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-gray-300 transition hover:bg-white/[0.08] hover:text-white"
+                  disabled={listing === listingNFT.id}
+                  className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-gray-300 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
                 >
                   Cancel
                 </MotionButton>
