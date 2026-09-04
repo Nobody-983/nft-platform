@@ -2,21 +2,41 @@
 import { supabase } from "../lib/supabase";
 
 /**
- * Create or update the profile belonging to a wallet.
+ * Create or retrieve a profile for a Nimiq wallet.
  *
- * IMPORTANT:
- * This does NOT create a Supabase email/password account.
- * The wallet address is the identity used by the application.
+ * There is NO email authentication here.
  */
 export async function loginWithWallet(walletAddress) {
   if (!walletAddress) {
     throw new Error("Wallet address is required.");
   }
 
-  const profile = await syncWalletProfile(walletAddress);
+  const {
+    data: profile,
+    error,
+  } = await supabase.rpc(
+    "get_or_create_wallet_profile",
+    {
+      p_wallet_address: walletAddress,
+    }
+  );
+
+  if (error) {
+    console.error(
+      "WALLET PROFILE ERROR:",
+      error
+    );
+
+    throw new Error(
+      error.message ||
+        "Unable to create wallet profile."
+    );
+  }
 
   if (!profile) {
-    throw new Error("Unable to create or load wallet profile.");
+    throw new Error(
+      "Unable to create or load wallet profile."
+    );
   }
 
   return {
@@ -26,105 +46,7 @@ export async function loginWithWallet(walletAddress) {
 }
 
 /**
- * Create or update the wallet profile.
- */
-export async function syncWalletProfile(walletAddress) {
-  if (!walletAddress) {
-    return null;
-  }
-
-  try {
-    const clean = walletAddress
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .toUpperCase();
-
-    const defaultUsername =
-      `user_${clean.slice(2, 8).toLowerCase()}`;
-
-    const defaultDisplayName =
-      `Nimiq ${clean.slice(0, 4)}...${clean.slice(-4)}`;
-
-    // Check whether this wallet already has a profile.
-    const {
-      data: existingProfile,
-      error: fetchError,
-    } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("wallet_address", walletAddress)
-      .maybeSingle();
-
-    if (fetchError) {
-      console.error(
-        "PROFILE LOOKUP ERROR:",
-        fetchError
-      );
-
-      throw fetchError;
-    }
-
-    // Existing wallet profile
-    if (existingProfile) {
-      return existingProfile;
-    }
-
-    /*
-     * There is no Supabase auth user here.
-     *
-     * Therefore we cannot use auth.uid() as the profile id.
-     *
-     * We use a generated UUID for the profile.
-     */
-    const profileId = crypto.randomUUID();
-
-    const {
-      data: newProfile,
-      error: insertError,
-    } = await supabase
-      .from("profiles")
-      .insert({
-        id: profileId,
-        username: defaultUsername,
-        display_name: defaultDisplayName,
-        wallet_address: walletAddress,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error(
-        "PROFILE INSERT ERROR:",
-        insertError
-      );
-
-      throw insertError;
-    }
-
-    return newProfile;
-  } catch (error) {
-    console.error(
-      "SYNC WALLET PROFILE ERROR:",
-      error
-    );
-
-    throw error;
-  }
-}
-
-/**
- * Wallet-only logout.
- *
- * There is no Supabase auth session to sign out from yet.
- */
-export async function logoutUser() {
-  return true;
-}
-
-/**
- * Restore the wallet profile from localStorage.
- *
- * This is only a temporary client-side session mechanism.
- * Proper server-verified wallet authentication will replace this.
+ * Get the current wallet profile.
  */
 export async function getCurrentSession() {
   const walletAddress =
@@ -160,6 +82,14 @@ export async function getCurrentSession() {
     };
   }
 
+  if (!profile) {
+    return {
+      session: null,
+      user: null,
+      profile: null,
+    };
+  }
+
   return {
     session: {
       walletAddress,
@@ -167,4 +97,12 @@ export async function getCurrentSession() {
     user: null,
     profile,
   };
+}
+
+/**
+ * Wallet logout.
+ */
+export async function logoutUser() {
+  localStorage.removeItem("nimiq_wallet");
+  return true;
 }
