@@ -1,4 +1,4 @@
-
+import { useWallet } from "../context/walletContext";
 import { useEffect, useState } from "react";
 import {
   Bell,
@@ -16,6 +16,8 @@ import {
 import { supabase } from "../lib/supabase";
 
 function Account() {
+  const { disconnectWallet } = useWallet();
+
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
 
@@ -45,18 +47,13 @@ function Account() {
         setLoadingProfile(true);
         setError("");
 
-        // Get the current session.
-        // This is lighter than waiting on getUser().
         const {
           data: { session },
           error: sessionError,
         } = await supabase.auth.getSession();
 
         if (sessionError) {
-          console.error(
-            "GET SESSION ERROR:",
-            sessionError
-          );
+          console.error("GET SESSION ERROR:", sessionError);
 
           if (mounted) {
             setError(
@@ -119,7 +116,6 @@ function Account() {
         }
 
         setProfile(data);
-
         setUsername(data?.username || "");
         setBio(data?.bio || "");
       } catch (err) {
@@ -157,9 +153,11 @@ function Account() {
   const currentUsername =
     profile?.username || "username";
 
-  const email = user?.email || "No email available";
+  const email =
+    user?.email || "No email available";
 
-  const avatar = profile?.avatar_url || null;
+  const avatar =
+    profile?.avatar_url || null;
 
   const initial =
     displayName.charAt(0).toUpperCase();
@@ -168,10 +166,7 @@ function Account() {
     profile?.wallet_address || "";
 
   const shortWallet = walletAddress
-    ? `${walletAddress.slice(
-        0,
-        6
-      )}...${walletAddress.slice(-6)}`
+    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`
     : "No wallet connected";
 
   // ==========================================
@@ -376,6 +371,9 @@ function Account() {
         return;
       }
 
+      // Clear wallet state from the application too.
+      disconnectWallet();
+
       setProfile((previous) => ({
         ...previous,
         ...data,
@@ -412,6 +410,10 @@ function Account() {
       setSigningOut(true);
       setError("");
 
+      // First clear the wallet state.
+      disconnectWallet();
+
+      // Then sign out of Supabase.
       const { error: signOutError } =
         await supabase.auth.signOut();
 
@@ -426,8 +428,12 @@ function Account() {
             "Unable to sign out."
         );
 
-        setSigningOut(false);
+        return;
       }
+
+      // Supabase auth state is now signed out.
+      // The auth guard will redirect the user
+      // back to the login page.
     } catch (err) {
       console.error(
         "SIGN OUT ERROR:",
@@ -438,7 +444,7 @@ function Account() {
         err?.message ||
           "Unable to sign out."
       );
-
+    } finally {
       setSigningOut(false);
     }
   };
