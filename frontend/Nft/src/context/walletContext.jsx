@@ -105,6 +105,30 @@ export function WalletProvider({ children }) {
           }
         }
 
+        // A prior wallet selection is enough to retry account provisioning on
+        // reload. This restores the Supabase session for every route without
+        // asking Nimiq Pay for the same account again.
+        if (mounted && savedAddress && (!existingUser || !existingProfile)) {
+          try {
+            const { user: restoredUser, profile: restoredProfile } =
+              await loginWithWallet(savedAddress);
+
+            if (mounted) {
+              setUser(restoredUser);
+              setProfile(restoredProfile);
+              setError(null);
+            }
+          } catch (restoreError) {
+            console.error("Marketplace session restore error:", restoreError);
+            if (mounted) {
+              setError(
+                restoreError.message ||
+                  "Wallet connected, but the marketplace session could not be restored."
+              );
+            }
+          }
+        }
+
         // Initialize Nimiq provider when available
         try {
           const provider = await initNimiq({

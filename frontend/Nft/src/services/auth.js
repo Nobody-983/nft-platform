@@ -128,8 +128,8 @@ export async function getCurrentSession() {
     );
 
     return {
-      session: null,
-      user: null,
+      session,
+      user: session.user,
       profile: null,
     };
   }

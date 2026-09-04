@@ -272,13 +272,6 @@ function Dashboard({ user }) {
   // =====================================================
 
   useEffect(() => {
-    if (!user?.id) {
-      setTrendingNFTs([]);
-      setUserLikes(new Set());
-      setLoadingTrending(false);
-      return;
-    }
-
     fetchTrendingNFTs();
   }, [user?.id]);
 

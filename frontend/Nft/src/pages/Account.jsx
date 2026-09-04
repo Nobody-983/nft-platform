@@ -54,7 +54,7 @@ function Account() {
 
         // The wallet provider already restores the Supabase session. Use that
         // state first so this page does not race it on initial render.
-        if (walletUser) {
+        if (walletUser && walletProfile) {
           if (mounted) {
             setUser(walletUser);
             setProfile(walletProfile);
