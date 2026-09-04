@@ -1,4 +1,3 @@
-
 import {
   createContext,
   useContext,
@@ -11,26 +10,22 @@ const WalletContext = createContext(null);
 
 export function WalletProvider({ children }) {
   const [nimiq, setNimiq] = useState(null);
-  const [walletAddress, setWalletAddress] = useState(
-    () => localStorage.getItem("nimiq_wallet") || null
-  );
-
-  const [isConnected, setIsConnected] = useState(
-    () => Boolean(localStorage.getItem("nimiq_wallet"))
-  );
-
+  const [walletAddress, setWalletAddress] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // ================= CONNECT WALLET =================
 
   const connectWallet = async () => {
+    if (loading) return null;
+
     setLoading(true);
 
     try {
       // Initialize Nimiq provider
       const provider = nimiq || (await init());
 
-      // Save provider for future calls
+      // Save provider in memory
       if (!nimiq) {
         setNimiq(provider);
       }
@@ -46,12 +41,15 @@ export function WalletProvider({ children }) {
 
       const address = accounts[0];
 
+      if (!address) {
+        throw new Error(
+          "No Nimiq wallet account was selected."
+        );
+      }
+
       // Update application state
       setWalletAddress(address);
       setIsConnected(true);
-
-      // Save wallet address locally
-      localStorage.setItem("nimiq_wallet", address);
 
       return address;
     } catch (error) {
@@ -77,8 +75,6 @@ export function WalletProvider({ children }) {
   const disconnectWallet = () => {
     setWalletAddress(null);
     setIsConnected(false);
-
-    localStorage.removeItem("nimiq_wallet");
   };
 
   // ================= CONTEXT VALUE =================
