@@ -1,184 +1,170 @@
+
 import { supabase } from "../lib/supabase";
 
 /**
- * Derives deterministic auth credentials from a Nimiq wallet address
- */
-function getCredentialsForWallet(walletAddress) {
-  const clean = walletAddress.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-  const email = `${clean.toLowerCase()}@nimiq.id`;
-  // Deterministic password seeded with application salt
-  const password = `NimiqAuth_2026_${clean}!`;
-  return { clean, email, password };
-}
-
-/**
- * Authenticate or create a Supabase user for a connected Nimiq wallet,
- * and ensure a matching row exists in the profiles table.
+ * Create or update the profile belonging to a wallet.
+ *
+ * IMPORTANT:
+ * This does NOT create a Supabase email/password account.
+ * The wallet address is the identity used by the application.
  */
 export async function loginWithWallet(walletAddress) {
   if (!walletAddress) {
-    throw new Error("Wallet address is required for authentication.");
+    throw new Error("Wallet address is required.");
   }
 
-  const { email, password } = getCredentialsForWallet(walletAddress);
+  const profile = await syncWalletProfile(walletAddress);
 
-  let user = null;
-
-  // 1. Try signing in with existing wallet credentials
-  const { data: signInData, error: signInError } =
-    await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-  if (!signInError && signInData?.user) {
-    user = signInData.user;
-  } else {
-    // 2. If sign-in failed, attempt to register new account
-    const { data: signUpData, error: signUpError } =
-      await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            wallet_address: walletAddress,
-          },
-        },
-      });
-
-    if (signUpError) {
-      // If user already registered but sign-in failed previously
-      console.warn("Sign up warning:", signUpError.message);
-      // Try sign-in once more in case of edge cases
-      const retry = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (retry.data?.user) {
-        user = retry.data.user;
-      } else {
-        throw new Error(signUpError.message || "Failed to authenticate wallet with Supabase.");
-      }
-    } else if (signUpData?.user) {
-      user = signUpData.user;
-      // If session was not immediately granted (e.g. confirm email setting), try signing in
-      if (!signUpData.session) {
-        const retry = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (retry.data?.user) {
-          user = retry.data.user;
-        }
-      }
-    }
+  if (!profile) {
+    throw new Error("Unable to create or load wallet profile.");
   }
 
-  if (!user) {
-    throw new Error("Unable to establish user session.");
-  }
-
-  // 3. Sync or create profile record in `profiles` table
-  const profile = await syncWalletProfile(user, walletAddress);
-
-  return { user, profile };
+  return {
+    user: null,
+    profile,
+  };
 }
 
 /**
- * Ensure the Supabase profile has the correct wallet address and default info
+ * Create or update the wallet profile.
  */
-export async function syncWalletProfile(user, walletAddress) {
-  if (!user?.id) return null;
+export async function syncWalletProfile(walletAddress) {
+  if (!walletAddress) {
+    return null;
+  }
 
   try {
-    const clean = walletAddress.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-    const defaultUsername = `user_${clean.slice(2, 8).toLowerCase()}`;
-    const defaultDisplayName = `Nimiq ${clean.slice(0, 4)}...${clean.slice(-4)}`;
+    const clean = walletAddress
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toUpperCase();
 
-    const { data: existingProfile, error: fetchError } = await supabase
+    const defaultUsername =
+      `user_${clean.slice(2, 8).toLowerCase()}`;
+
+    const defaultDisplayName =
+      `Nimiq ${clean.slice(0, 4)}...${clean.slice(-4)}`;
+
+    // Check whether this wallet already has a profile.
+    const {
+      data: existingProfile,
+      error: fetchError,
+    } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user.id)
+      .eq("wallet_address", walletAddress)
       .maybeSingle();
 
     if (fetchError) {
-      console.warn("Error checking profile:", fetchError);
+      console.error(
+        "PROFILE LOOKUP ERROR:",
+        fetchError
+      );
+
+      throw fetchError;
     }
 
-    if (!existingProfile) {
-      const { data: newProfile, error: insertError } = await supabase
-        .from("profiles")
-        .insert({
-          id: user.id,
-          username: defaultUsername,
-          display_name: defaultDisplayName,
-          wallet_address: walletAddress,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .maybeSingle();
-
-      if (insertError) {
-        console.error("Failed to insert profile:", insertError);
-      }
-      return newProfile || { id: user.id, wallet_address: walletAddress, username: defaultUsername };
+    // Existing wallet profile
+    if (existingProfile) {
+      return existingProfile;
     }
 
-    // Update if wallet address is missing or different
-    if (!existingProfile.wallet_address || existingProfile.wallet_address !== walletAddress) {
-      const { data: updatedProfile, error: updateError } = await supabase
-        .from("profiles")
-        .update({
-          wallet_address: walletAddress,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id)
-        .select()
-        .maybeSingle();
+    /*
+     * There is no Supabase auth user here.
+     *
+     * Therefore we cannot use auth.uid() as the profile id.
+     *
+     * We use a generated UUID for the profile.
+     */
+    const profileId = crypto.randomUUID();
 
-      if (updateError) {
-        console.error("Failed to update profile wallet:", updateError);
-      }
-      return updatedProfile || existingProfile;
+    const {
+      data: newProfile,
+      error: insertError,
+    } = await supabase
+      .from("profiles")
+      .insert({
+        id: profileId,
+        username: defaultUsername,
+        display_name: defaultDisplayName,
+        wallet_address: walletAddress,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error(
+        "PROFILE INSERT ERROR:",
+        insertError
+      );
+
+      throw insertError;
     }
 
-    return existingProfile;
-  } catch (err) {
-    console.error("Error syncing profile:", err);
-    return null;
+    return newProfile;
+  } catch (error) {
+    console.error(
+      "SYNC WALLET PROFILE ERROR:",
+      error
+    );
+
+    throw error;
   }
 }
 
 /**
- * Sign out from Supabase
+ * Wallet-only logout.
+ *
+ * There is no Supabase auth session to sign out from yet.
  */
 export async function logoutUser() {
-  try {
-    await supabase.auth.signOut();
-  } catch (err) {
-    console.error("Sign out error:", err);
-  }
+  return true;
 }
 
 /**
- * Get current session and profile
+ * Restore the wallet profile from localStorage.
+ *
+ * This is only a temporary client-side session mechanism.
+ * Proper server-verified wallet authentication will replace this.
  */
 export async function getCurrentSession() {
-  const {
-    data: { session },
-    error,
-  } = await supabase.auth.getSession();
+  const walletAddress =
+    localStorage.getItem("nimiq_wallet");
 
-  if (error || !session?.user) {
-    return { session: null, user: null, profile: null };
+  if (!walletAddress) {
+    return {
+      session: null,
+      user: null,
+      profile: null,
+    };
   }
 
-  const { data: profile } = await supabase
+  const {
+    data: profile,
+    error,
+  } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", session.user.id)
+    .eq("wallet_address", walletAddress)
     .maybeSingle();
 
-  return { session, user: session.user, profile };
+  if (error) {
+    console.error(
+      "GET WALLET PROFILE ERROR:",
+      error
+    );
+
+    return {
+      session: null,
+      user: null,
+      profile: null,
+    };
+  }
+
+  return {
+    session: {
+      walletAddress,
+    },
+    user: null,
+    profile,
+  };
 }

@@ -66,8 +66,40 @@ function Account() {
         }
 
         if (!session?.user) {
+          if (walletAddress) {
+            const { data: profileData } = await supabase
+              .from("profiles")
+              .select(`
+                id,
+                username,
+                display_name,
+                avatar_url,
+                bio,
+                wallet_address,
+                created_at,
+                updated_at
+              `)
+              .eq("wallet_address", walletAddress)
+              .maybeSingle();
+
+            if (mounted && profileData) {
+              setProfile(profileData);
+              setUsername(profileData?.username || "");
+              setBio(profileData?.bio || "");
+              return;
+            } else if (mounted) {
+              const clean = walletAddress.replace(/\s+/g, "");
+              setProfile({
+                wallet_address: walletAddress,
+                display_name: `Nimiq ${clean.slice(0, 4)}...${clean.slice(-4)}`,
+                username: `user_${clean.slice(2, 8).toLowerCase()}`,
+              });
+              return;
+            }
+          }
+
           if (mounted) {
-            setError("No active session found.");
+            setError("No active session found. Please connect your Nimiq wallet.");
           }
 
           return;

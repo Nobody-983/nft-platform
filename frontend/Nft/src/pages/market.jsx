@@ -117,7 +117,7 @@ function Marketplace() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        navigate("/login");
+        setError("Please connect your Nimiq wallet to like NFTs.");
         return;
       }
 
