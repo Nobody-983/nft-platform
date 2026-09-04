@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2, ShoppingBag } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
