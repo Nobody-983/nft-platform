@@ -69,6 +69,12 @@ export async function loginWithWallet(walletAddress) {
   }
 
   if (existingProfile) {
+    if (existingProfile.wallet_address !== walletAddress) {
+      throw new Error(
+        "This marketplace account is already linked to a different Nimiq wallet."
+      );
+    }
+
     return { user, profile: existingProfile };
   }
 

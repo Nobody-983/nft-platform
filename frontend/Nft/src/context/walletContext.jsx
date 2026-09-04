@@ -174,20 +174,31 @@ export function WalletProvider({ children }) {
       setIsConnected(true);
       localStorage.setItem("nimiq_wallet", address);
 
+      let profileProvisioningError = null;
+
       try {
         const { user: authUser, profile: authProfile } = await loginWithWallet(address);
         setUser(authUser);
         setProfile(authProfile);
       } catch (profileError) {
         // Nimiq Pay has already confirmed the wallet. Keep that connection
-        // intact and surface profile provisioning as a separate issue.
+        // intact and report profile provisioning separately to the caller.
         console.error("Marketplace account provisioning error:", profileError);
-        setError(profileError.message || "Wallet connected, but the marketplace account could not be created.");
+        profileProvisioningError = profileError;
       }
 
       // 3. Refresh wallet information
       await refreshBalance(address);
       await refreshNetwork(provider);
+
+      if (profileProvisioningError) {
+        const provisioningError = new Error(
+          profileProvisioningError.message ||
+            "Wallet connected, but the marketplace account could not be created."
+        );
+        provisioningError.walletConnected = true;
+        throw provisioningError;
+      }
 
       return address;
     } catch (err) {
@@ -208,12 +219,13 @@ export function WalletProvider({ children }) {
 
       setError(userFriendlyError);
 
-      // Make sure failed authentication does not leave
-      // the application looking connected.
-      setWalletAddress(null);
-      setIsConnected(false);
-      setUser(null);
-      setProfile(null);
+      if (!err?.walletConnected) {
+        // A provider/account-selection failure means no wallet connected.
+        setWalletAddress(null);
+        setIsConnected(false);
+        setUser(null);
+        setProfile(null);
+      }
 
       throw new Error(userFriendlyError, {
         cause: err,

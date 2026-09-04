@@ -16,7 +16,12 @@ import {
 import { supabase } from "../lib/supabase";
 
 function Account() {
-  const { disconnectWallet } = useWallet();
+  const {
+    disconnectWallet,
+    walletAddress: connectedWalletAddress,
+    user: walletUser,
+    profile: walletProfile,
+  } = useWallet();
 
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -47,6 +52,18 @@ function Account() {
         setLoadingProfile(true);
         setError("");
 
+        // The wallet provider already restores the Supabase session. Use that
+        // state first so this page does not race it on initial render.
+        if (walletUser) {
+          if (mounted) {
+            setUser(walletUser);
+            setProfile(walletProfile);
+            setUsername(walletProfile?.username || "");
+            setBio(walletProfile?.bio || "");
+          }
+          return;
+        }
+
         const {
           data: { session },
           error: sessionError,
@@ -66,7 +83,7 @@ function Account() {
         }
 
         if (!session?.user) {
-          if (walletAddress) {
+          if (connectedWalletAddress) {
             const { data: profileData } = await supabase
               .from("profiles")
               .select(`
@@ -79,7 +96,7 @@ function Account() {
                 created_at,
                 updated_at
               `)
-              .eq("wallet_address", walletAddress)
+              .eq("wallet_address", connectedWalletAddress)
               .maybeSingle();
 
             if (mounted && profileData) {
@@ -88,9 +105,9 @@ function Account() {
               setBio(profileData?.bio || "");
               return;
             } else if (mounted) {
-              const clean = walletAddress.replace(/\s+/g, "");
+              const clean = connectedWalletAddress.replace(/\s+/g, "");
               setProfile({
-                wallet_address: walletAddress,
+                wallet_address: connectedWalletAddress,
                 display_name: `Nimiq ${clean.slice(0, 4)}...${clean.slice(-4)}`,
                 username: `user_${clean.slice(2, 8).toLowerCase()}`,
               });
@@ -171,7 +188,7 @@ function Account() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [connectedWalletAddress, walletProfile, walletUser]);
 
   // ==========================================
   // PROFILE VALUES
@@ -195,7 +212,7 @@ function Account() {
     displayName.charAt(0).toUpperCase();
 
   const walletAddress =
-    profile?.wallet_address || "";
+    profile?.wallet_address || connectedWalletAddress || "";
 
   const shortWallet = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`
