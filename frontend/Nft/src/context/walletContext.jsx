@@ -14,9 +14,7 @@ import {
 } from "../lib/nimiq";
 
 import {
-  loginWithWallet,
   logoutUser,
-  getCurrentSession,
 } from "../services/auth";
 
 const WalletContext = createContext(null);
@@ -79,26 +77,12 @@ export function WalletProvider({ children }) {
 
     async function restoreSession() {
       try {
-        const {
-          session,
-          user: existingUser,
-          profile: existingProfile,
-        } = await getCurrentSession();
+        const savedAddress = localStorage.getItem("nimiq_wallet");
 
-        if (!mounted) return;
-
-        if (session && existingUser) {
-          setUser(existingUser);
-          setProfile(existingProfile);
-
-          const address = existingProfile?.wallet_address || null;
-
-          if (address) {
-            setWalletAddress(address);
-            setIsConnected(true);
-
-            await refreshBalance(address);
-          }
+        if (mounted && savedAddress) {
+          setWalletAddress(savedAddress);
+          setIsConnected(true);
+          await refreshBalance(savedAddress);
         }
 
         // Initialize Nimiq provider when available
@@ -147,37 +131,30 @@ export function WalletProvider({ children }) {
         setNimiq(provider);
       }
 
-      // 2. Get wallet accounts
+      // 2. Ask Nimiq Pay for the user's selected account. This is the
+      // user-approved wallet connection request in the Mini App SDK.
       const accounts = await provider.listAccounts();
 
-      if (!accounts || accounts.length === 0) {
-        throw new Error("No Nimiq wallet account was selected.");
+      if (!Array.isArray(accounts)) {
+        throw new Error(
+          accounts?.error?.message || "Nimiq Pay could not provide an account."
+        );
       }
 
-      const address = accounts[0];
+      const address = accounts[0]?.trim();
 
       if (!address) {
         throw new Error("No Nimiq wallet account was selected.");
       }
 
-      // 3. Authenticate wallet
-      //
-      // IMPORTANT:
-      // Nothing is marked as connected yet.
-      // loginWithWallet must succeed first.
-      const {
-        user: authUser,
-        profile: authProfile,
-      } = await loginWithWallet(address);
-
-      // 4. Authentication succeeded.
-      // Now update wallet/application state.
+      // A wallet is connected as soon as Nimiq Pay returns an account.
+      // Profile provisioning is intentionally not part of this wallet approval
+      // flow: a backend/profile error must not disconnect a valid wallet.
       setWalletAddress(address);
       setIsConnected(true);
-      setUser(authUser);
-      setProfile(authProfile);
+      localStorage.setItem("nimiq_wallet", address);
 
-      // 5. Refresh wallet information
+      // 3. Refresh wallet information
       await refreshBalance(address);
       await refreshNetwork(provider);
 
@@ -224,6 +201,12 @@ export function WalletProvider({ children }) {
   // ================= DISCONNECT =================
 
   const disconnectWallet = async () => {
+    try {
+      nimiq?.disconnect();
+    } catch (err) {
+      console.warn("Nimiq provider disconnect error:", err);
+    }
+
     try {
       await logoutUser();
     } catch (err) {
