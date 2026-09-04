@@ -14,7 +14,9 @@ import {
 } from "../lib/nimiq";
 
 import {
+  loginWithWallet,
   logoutUser,
+  getCurrentSession,
 } from "../services/auth";
 
 const WalletContext = createContext(null);
@@ -78,11 +80,29 @@ export function WalletProvider({ children }) {
     async function restoreSession() {
       try {
         const savedAddress = localStorage.getItem("nimiq_wallet");
+        const {
+          session,
+          user: existingUser,
+          profile: existingProfile,
+        } = await getCurrentSession();
 
         if (mounted && savedAddress) {
           setWalletAddress(savedAddress);
           setIsConnected(true);
           await refreshBalance(savedAddress);
+        }
+
+        if (mounted && session && existingUser) {
+          setUser(existingUser);
+          setProfile(existingProfile);
+
+          const profileAddress = existingProfile?.wallet_address;
+          if (!savedAddress && profileAddress) {
+            setWalletAddress(profileAddress);
+            setIsConnected(true);
+            localStorage.setItem("nimiq_wallet", profileAddress);
+            await refreshBalance(profileAddress);
+          }
         }
 
         // Initialize Nimiq provider when available
@@ -153,6 +173,17 @@ export function WalletProvider({ children }) {
       setWalletAddress(address);
       setIsConnected(true);
       localStorage.setItem("nimiq_wallet", address);
+
+      try {
+        const { user: authUser, profile: authProfile } = await loginWithWallet(address);
+        setUser(authUser);
+        setProfile(authProfile);
+      } catch (profileError) {
+        // Nimiq Pay has already confirmed the wallet. Keep that connection
+        // intact and surface profile provisioning as a separate issue.
+        console.error("Marketplace account provisioning error:", profileError);
+        setError(profileError.message || "Wallet connected, but the marketplace account could not be created.");
+      }
 
       // 3. Refresh wallet information
       await refreshBalance(address);

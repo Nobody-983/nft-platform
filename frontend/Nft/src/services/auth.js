@@ -1,63 +1,109 @@
 
 import { supabase } from "../lib/supabase";
 
+function getCredentialsForWallet(walletAddress) {
+  const clean = walletAddress.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+
+  return {
+    clean,
+    email: `${clean.toLowerCase()}@nimiq.id`,
+    password: `NimiqAuth_2026_${clean}!`,
+  };
+}
+
 /**
- * Create or retrieve a profile for a Nimiq wallet.
- *
- * There is NO email authentication here.
+ * Create or restore the Supabase account and profile associated with a wallet.
+ * Wallet selection itself happens in Nimiq Pay before this function is called.
  */
 export async function loginWithWallet(walletAddress) {
   if (!walletAddress) {
     throw new Error("Wallet address is required.");
   }
 
-  const {
-    data: profile,
-    error,
-  } = await supabase.rpc(
-    "get_or_create_wallet_profile",
-    {
-      p_wallet_address: walletAddress,
+  const { clean, email, password } = getCredentialsForWallet(walletAddress);
+
+  let {
+    data: { user },
+    error: signInError,
+  } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (signInError || !user) {
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { wallet_address: walletAddress } },
+    });
+
+    if (signUpError) {
+      throw new Error(signUpError.message || "Unable to create the marketplace account.");
     }
-  );
 
-  if (error) {
-    console.error(
-      "WALLET PROFILE ERROR:",
-      error
-    );
+    user = signUpData.user;
 
-    throw new Error(
-      error.message ||
-        "Unable to create wallet profile."
-    );
+    if (!signUpData.session) {
+      const { data: retryData, error: retryError } =
+        await supabase.auth.signInWithPassword({ email, password });
+
+      if (retryError || !retryData.user) {
+        throw new Error(
+          "Marketplace account was created, but Supabase email confirmation is enabled. Disable email confirmation for wallet accounts, then reconnect."
+        );
+      }
+
+      user = retryData.user;
+    }
   }
 
-  if (!profile) {
-    throw new Error(
-      "Unable to create or load wallet profile."
-    );
+  if (!user) {
+    throw new Error("Unable to create the marketplace account.");
   }
 
-  return {
-    user: null,
-    profile,
-  };
+  const { data: existingProfile, error: profileLookupError } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileLookupError) {
+    throw new Error(profileLookupError.message || "Unable to load the marketplace profile.");
+  }
+
+  if (existingProfile) {
+    return { user, profile: existingProfile };
+  }
+
+  const username = `user_${clean.toLowerCase()}`;
+  const displayName = `Nimiq ${clean.slice(0, 4)}...${clean.slice(-4)}`;
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .insert({
+      id: user.id,
+      username,
+      display_name: displayName,
+      wallet_address: walletAddress,
+    })
+    .select()
+    .single();
+
+  if (profileError) {
+    throw new Error(profileError.message || "Unable to create the marketplace profile.");
+  }
+
+  return { user, profile };
 }
 
 /**
  * Get the current wallet profile.
  */
 export async function getCurrentSession() {
-  const walletAddress =
-    localStorage.getItem("nimiq_wallet");
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
 
-  if (!walletAddress) {
-    return {
-      session: null,
-      user: null,
-      profile: null,
-    };
+  if (sessionError || !session?.user) {
+    return { session: null, user: null, profile: null };
   }
 
   const {
@@ -66,7 +112,7 @@ export async function getCurrentSession() {
   } = await supabase
     .from("profiles")
     .select("*")
-    .eq("wallet_address", walletAddress)
+    .eq("id", session.user.id)
     .maybeSingle();
 
   if (error) {
@@ -82,19 +128,9 @@ export async function getCurrentSession() {
     };
   }
 
-  if (!profile) {
-    return {
-      session: null,
-      user: null,
-      profile: null,
-    };
-  }
-
   return {
-    session: {
-      walletAddress,
-    },
-    user: null,
+    session,
+    user: session.user,
     profile,
   };
 }
@@ -103,6 +139,7 @@ export async function getCurrentSession() {
  * Wallet logout.
  */
 export async function logoutUser() {
+  await supabase.auth.signOut();
   localStorage.removeItem("nimiq_wallet");
   return true;
 }
