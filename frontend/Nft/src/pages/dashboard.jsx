@@ -17,6 +17,7 @@ import {
   staggerContainer,
 } from "../components/motion";
 
+import { useWallet } from "../context/walletContext";
 import { supabase } from "../lib/supabase";
 
 // =====================================================
