@@ -13,6 +13,7 @@ import Wallet from "./pages/wallet";
 import Account from "./pages/Account";
 import Auth from "./pages/auth";
 import CreateNFT from "./pages/createNft";
+import Game from "./pages/game/Game";
 
 function AppContent() {
   const { user } = useWallet();
