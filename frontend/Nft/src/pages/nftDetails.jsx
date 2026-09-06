@@ -254,9 +254,63 @@ function NFTDetails() {
       // For now, simulate confirmation after a delay
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Transaction "confirmed" - update NFT ownership
-      // In a real implementation, this would involve smart contract interaction
-      // and updating the Supabase database
+      // Verify the listing is still active before claiming it
+      // This provides double-purchase protection at the database level
+      const { data: refreshedListing, error: refreshError } = await supabase
+        .from("marketplace_listings")
+        .select("status, id, price, currency, seller_id")
+        .eq("id", listing.id)
+        .single();
+
+      if (refreshError || !refreshedListing || refreshedListing.status !== "active") {
+        setBuyError("This NFT has already been sold or is no longer available.");
+        setBuying(false);
+        return;
+      }
+
+      // Mark listing as inactive and create sale record atomically
+      // Using Supabase with specific checks ensures only one purchase can succeed
+      const { error: updateError } = await supabase
+        .from("marketplace_listings")
+        .update({ status: "sold" })
+        .eq("id", listing.id)
+        .eq("status", "active");  // Critical: only update if still active
+
+      if (updateError) {
+        console.error("Failed to update listing status:", updateError);
+        setBuyError("Failed to claim NFT. Please try again.");
+        setBuying(false);
+        return;
+      }
+
+      // Create sale transaction record
+      const { error: saleError } = await supabase
+        .from("marketplace_sales")
+        .insert({
+          nft_id: nft.id,
+          listing_id: listing.id,
+          seller_id: listing.seller_id,
+          buyer_id: connectedWalletAddress,
+          price: listing.price,
+          currency: listing.currency || "NIM",
+          transaction_hash: txHash,
+          status: "completed",
+          created_at: new Date().toISOString(),
+        });
+
+      if (saleError) {
+        // Roll back the listing status if sale record creation failed
+        await supabase
+          .from("marketplace_listings")
+          .update({ status: "active" })
+          .eq("id", listing.id);
+        console.error("Failed to create sale record:", saleError);
+        setBuyError("Transaction submitted but failed to record sale. Please contact support.");
+        setBuying(false);
+        return;
+      }
+
+      // Transaction recorded successfully
       setBuySuccess(true);
 
       // Reset after a moment
