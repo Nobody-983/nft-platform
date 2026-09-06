@@ -180,11 +180,7 @@ function Wallet() {
   // TRANSACTIONS MOCK / RECENT
   // ==========================================
 
-  const transactions = [
-    ["NFT Purchase", "-0.85 NIM", "Today"],
-    ["NFT Sale", "+1.20 NIM", "Yesterday"],
-    ["Wallet Deposit", "+2.00 NIM", "Aug 29"],
-  ];
+  const transactions = [];
 
   const shortWalletAddress = walletAddress
     ? shortenAddress(walletAddress, 6, 6)

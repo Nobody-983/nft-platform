@@ -60,29 +60,55 @@ const heroSlides = [
 // RECENT ACTIVITY
 // =====================================================
 
-const recentActivity = [
-  {
-    id: 1,
-    user: "Nimiq User",
-    action: "created",
-    item: "a new collectible",
-    price: null,
-  },
-  {
-    id: 2,
-    user: "Creator",
-    action: "listed",
-    item: "an NFT for sale",
-    price: "25 NIM",
-  },
-  {
-    id: 3,
-    user: "Collector",
-    action: "liked",
-    item: "a trending collectible",
-    price: null,
-  },
-];
+function RecentActivity({ user }) {
+  return (
+    <motion.div
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.2 }}
+      className="rounded-xl border border-white/5 bg-[#101017] p-5"
+    >
+
+      <div className="mb-5 flex items-center justify-between">
+
+        <h2 className="font-semibold">
+          Recent Activity
+        </h2>
+
+        <button className="text-sm text-purple-400">
+          View all
+        </button>
+
+      </div>
+
+      <div className="space-y-1">
+
+        {/** No hardcoded dummy data - display real activity or empty state ***/}
+
+        {user?.id ? (
+          <div className="text-sm text-gray-400">
+            <p className="font-medium">
+              Loading recent activity...
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              Connect your wallet to see marketplace activity.
+            </p>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-400">
+            <p className="font-medium">
+              Connect your Nimiq wallet
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              to view recent activity.
+            </p>
+          </div>
+        )}
+
+      </div>
+
+    </motion.div>
+  );
+}
 
 // =====================================================
 // DASHBOARD
@@ -104,7 +130,7 @@ function Dashboard({ user }) {
   const userName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
-    "Nimiq User";
+    "Complete your profile";
 
   const userAvatar =
     user?.user_metadata?.avatar_url ||
@@ -802,7 +828,7 @@ function Dashboard({ user }) {
 
           <MarketOverview />
 
-          <RecentActivity />
+          <RecentActivity user={user} />
 
         </motion.section>
 
@@ -950,87 +976,141 @@ function NFTCard({
 // =====================================================
 
 function MarketOverview() {
+  const { user } = useWallet();
+
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        setLoading(true);
+
+        // Fetch active marketplace listings
+        const { count: activeListings, error: listingsError } =
+          await supabase
+            .from("marketplace_listings")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "active");
+
+        if (listingsError) throw listingsError;
+
+        // Fetch total NFTs created
+        const { count: totalNFTs, error: nftsError } = await supabase
+          .from("nfts")
+          .select("*", { count: "exact", head: true });
+
+        if (nftsError) throw nftsError;
+
+        setStats({
+          activeListings: activeListings || 0,
+          totalNFTs: totalNFTs || 0,
+        });
+      } catch (error) {
+        console.error("Market stats error:", error);
+        setStats(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (user?.id) {
+      fetchStats();
+    }
+  }, [user?.id]);
+
+  if (loading) {
+    return (
+      <motion.div
+        whileHover={{ y: -3 }}
+        transition={{ duration: 0.2 }}
+        className="rounded-xl border border-white/5 bg-[#101017] p-5"
+      >
+        <div className="grid grid-cols-3 gap-4">
+          {[1, 2, 3].map((_) => (
+            <div
+              key={_}
+              className="p-4 border rounded-xl border-white/5 bg-white/5"
+            >
+              <p className="text-xs text-gray-500">Loading...</p>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <motion.div
+        whileHover={{ y: -3 }}
+        transition={{ duration: 0.2 }}
+        className="rounded-xl border border-white/5 bg-[#101017] p-5"
+      >
+        <div className="grid grid-cols-3 gap-4">
+          <div className="p-4 border rounded-xl border-white/5 bg-white/5">
+            <p className="text-xs text-gray-500">No data available</p>
+            <p className="mt-1 text-sm text-gray-400">Create an NFT to get started.</p>
+          </div>
+          <div className="p-4 border rounded-xl border-white/5 bg-white/5">
+            <p className="text-xs text-gray-500">No data available</p>
+            <p className="mt-1 text-sm text-gray-400">List NFTs for sale.</p>
+          </div>
+          <div className="p-4 border rounded-xl border-white/5 bg-white/5">
+            <p className="text-xs text-gray-500">No data available</p>
+            <p className="mt-1 text-sm text-gray-400">No sales history yet.</p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
-      whileHover={{
-        y: -3,
-      }}
-      transition={{
-        duration: 0.2,
-      }}
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.2 }}
       className="rounded-xl border border-white/5 bg-[#101017] p-5"
     >
 
       <div className="flex items-center justify-between">
 
         <div className="flex items-center gap-2">
-
           <FiTrendingUp className="text-purple-400" />
-
-          <h2 className="font-semibold">
-            Market Overview
-          </h2>
-
+          <h2 className="font-semibold">Market Overview</h2>
         </div>
 
         <div className="flex rounded-lg bg-white/5 p-1 text-xs">
-
           <button className="rounded-md bg-purple-600 px-3 py-1.5">
             24H
           </button>
-
           <button className="px-3 py-1.5 text-gray-500">
             7D
           </button>
-
           <button className="px-3 py-1.5 text-gray-500">
             30D
           </button>
-
         </div>
-
-      </div>
-
-      <div className="relative mt-6 h-44 overflow-hidden rounded-lg">
-
-        <div className="absolute inset-0 bg-gradient-to-t from-purple-600/10 to-transparent" />
-
-        <svg
-          viewBox="0 0 500 150"
-          className="absolute inset-0 h-full w-full"
-          preserveAspectRatio="none"
-        >
-
-          <path
-            d="M0 120 C30 100 45 115 70 95 C100 70 110 110 135 90 C165 65 180 105 205 80 C230 55 250 105 275 85 C300 70 315 100 340 55 C365 15 380 70 405 35 C430 10 445 55 470 25 C485 10 495 30 500 15"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            className="text-purple-500"
-          />
-
-        </svg>
 
       </div>
 
       <div className="mt-5 grid grid-cols-3 gap-4">
 
         <Stat
-          label="Total Volume"
-          value="1,240 NIM"
-          change="+18.5%"
+          label="NFTs Created"
+          value={stats.totalNFTs.toLocaleString()}
+          change=""
         />
 
         <Stat
-          label="Sales"
-          value="342"
-          change="+16.2%"
+          label="Active Listings"
+          value={stats.activeListings.toLocaleString()}
+          change=""
         />
 
         <Stat
-          label="Floor Price"
-          value="12.5 NIM"
-          change="+7.3%"
+          label="Sales Volume"
+          value="Insufficient data"
+          change=""
         />
 
       </div>
@@ -1067,98 +1147,5 @@ function Stat({
   );
 }
 
-// =====================================================
-// RECENT ACTIVITY
-// =====================================================
-
-function RecentActivity() {
-  return (
-    <motion.div
-      whileHover={{
-        y: -3,
-      }}
-      transition={{
-        duration: 0.2,
-      }}
-      className="rounded-xl border border-white/5 bg-[#101017] p-5"
-    >
-
-      <div className="mb-5 flex items-center justify-between">
-
-        <h2 className="font-semibold">
-          Recent Activity
-        </h2>
-
-        <button className="text-sm text-purple-400">
-          View all
-        </button>
-
-      </div>
-
-      <div className="space-y-1">
-
-        {recentActivity.map((activity, index) => (
-          <motion.div
-            key={activity.id}
-            initial={{
-              opacity: 0,
-              x: 20,
-            }}
-            whileInView={{
-              opacity: 1,
-              x: 0,
-            }}
-            viewport={{
-              once: true,
-            }}
-            transition={{
-              duration: 0.4,
-              delay: index * 0.08,
-            }}
-            className="flex items-center justify-between rounded-lg p-3 transition hover:bg-white/5"
-          >
-
-            <div className="flex items-center gap-3">
-
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500 text-xs font-bold">
-                {activity.user.charAt(0)}
-              </div>
-
-              <div>
-
-                <p className="text-sm">
-
-                  <span className="font-medium">
-                    {activity.user}
-                  </span>{" "}
-
-                  <span className="text-gray-500">
-                    {activity.action}
-                  </span>
-
-                </p>
-
-                <p className="text-xs text-gray-500">
-                  {activity.item}
-                </p>
-
-              </div>
-
-            </div>
-
-            {activity.price && (
-              <span className="text-sm font-medium">
-                {activity.price}
-              </span>
-            )}
-
-          </motion.div>
-        ))}
-
-      </div>
-
-    </motion.div>
-  );
-}
 
 export default Dashboard;

@@ -178,9 +178,7 @@ function NFTDetails() {
 
           {listing ? (
             <MotionButton
-              onClick={() =>
-                alert("Buying will be connected next.")
-              }
+              onClick={handleBuyNFT}
               className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-4 font-semibold transition hover:bg-purple-700"
             >
               <ShoppingBag size={19} />
@@ -196,5 +194,80 @@ function NFTDetails() {
     </div>
   );
 }
+
+  const handleBuyNFT = async () => {
+    if (!listing || buying) return;
+
+    const { walletAddress: connectedWalletAddress } = useWallet() || {};
+
+    if (!connectedWalletAddress) {
+      setBuyError("Please connect your Nimiq wallet first.");
+      return;
+    }
+
+    setBuying(true);
+    setBuyError("");
+
+    try {
+      // Get user's TESTNET balance
+      const balance = await fetchNimiqBalance(connectedWalletAddress);
+
+      // NFT price
+      const nftPrice = Number(listing.price);
+      const nftCurrency = listing.currency || "NIM";
+
+      // Calculate gas fee (Nimiq network fee estimate)
+      // In a real implementation, this would be calculated from the transaction
+      // For now, use a small fixed fee for testnet
+      const gasFeeAmount = 0.001; // 0.001 NIM network fee
+      const gasFee = `${gasFeeAmount} NIM`;
+
+      // Total cost
+      const total = nftPrice + gasFeeAmount;
+      setTotalCost(`${total} ${nftCurrency}`);
+
+      // Show gas fee
+      setGasFee(gasFee);
+
+      // Check balance
+      if (balance < total) {
+        setBuyError(
+          `Insufficient TESTNET balance. You have ${balance} NIM, but need ${total} NIM.`
+        );
+        setBuying(false);
+        return;
+      }
+
+      // Send Nimiq TESTNET transaction
+      const provider = await initNimiq({ timeout: 5000 });
+
+      const txHash = await sendNIMTransaction(provider, {
+        recipient: connectedWalletAddress,
+        valueInNim: total,
+      });
+
+      // Show pending state
+      setBuyError("");
+
+      // Wait for transaction confirmation
+      // In a real implementation, we would poll for transaction status
+      // For now, simulate confirmation after a delay
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Transaction "confirmed" - update NFT ownership
+      // In a real implementation, this would involve smart contract interaction
+      // and updating the Supabase database
+      setBuySuccess(true);
+
+      // Reset after a moment
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      setBuySuccess(false);
+      setBuying(false);
+    } catch (err) {
+      console.error("Buy NFT error:", err);
+      setBuyError(err?.message || "Failed to complete NFT purchase.");
+      setBuying(false);
+    }
+  };
 
 export default NFTDetails;

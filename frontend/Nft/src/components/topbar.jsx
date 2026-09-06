@@ -1,6 +1,12 @@
-import { FiBell, FiSearch, FiMenu } from "react-icons/fi";
+import { FiBell, FiSearch, FiMenu, ChevronRight } from "react-icons/fi";
+
+import { useWallet } from "../context/walletContext";
 
 function TopBar() {
+  const {
+    walletAddress: connectedWalletAddress,
+    user: walletUser,
+  } = useWallet();
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-[#08080f]/80 backdrop-blur-xl">
       <div className="flex h-20 items-center gap-4 px-5 lg:px-8">
@@ -77,17 +83,24 @@ function TopBar() {
             </div>
 
             {/* User info */}
-            <div className="hidden text-left md:block">
+            <div className="min-w-0 flex-1">
 
-              <p className="text-sm font-medium text-white">
-                Ahmed
+              <p className="font-medium">
+                {walletUser?.email || walletUser?.user_metadata?.display_name || "Connect wallet"}
               </p>
 
-              <p className="text-xs text-gray-500">
-                0x82f4...ad7e
+              <p className="mt-1 text-sm text-gray-500">
+                {connectedWalletAddress
+                  ? `${connectedWalletAddress.slice(0, 6)}...${connectedWalletAddress.slice(-6)}`
+                  : "Connect wallet"}
               </p>
 
             </div>
+
+            <ChevronRight
+              size={19}
+              className="shrink-0 text-gray-500"
+            />
 
           </button>
 

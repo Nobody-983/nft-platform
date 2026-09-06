@@ -54,6 +54,11 @@ function AppContent() {
         />
 
         <Route
+          path="/game"
+          element={<Game />}
+        />
+
+        <Route
           path="/nft/:id"
           element={<NFTDetails />}
         />

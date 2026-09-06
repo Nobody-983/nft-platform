@@ -7,6 +7,7 @@ import {
   X,
   PlusSquare,
   User,
+  Gamepad,
 } from "lucide-react";
 
 const navigation = [
@@ -34,6 +35,11 @@ const navigation = [
     name: "Account",
     path: "/account",
     icon: User,
+  },
+  {
+    name: "Game",
+    path: "/game",
+    icon: Gamepad,
   },
 ];
 

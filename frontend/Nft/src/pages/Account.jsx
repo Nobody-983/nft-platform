@@ -1,8 +1,7 @@
 import { useWallet } from "../context/walletContext";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useNavigate } from "react";
 import {
   Bell,
-  Camera,
   Copy,
   ChevronRight,
   LogOut,
@@ -459,10 +458,10 @@ function Account() {
       setSigningOut(true);
       setError("");
 
-      // First clear the wallet state.
+      // Clear the wallet state first.
       disconnectWallet();
 
-      // Then sign out of Supabase.
+      // Then sign out of Supabase Auth.
       const { error: signOutError } =
         await supabase.auth.signOut();
 
@@ -477,12 +476,12 @@ function Account() {
             "Unable to sign out."
         );
 
+        setSigningOut(false);
         return;
       }
 
-      // Supabase auth state is now signed out.
-      // The auth guard will redirect the user
-      // back to the login page.
+      // Redirect to wallet connection page.
+      navigate("/login");
     } catch (err) {
       console.error(
         "SIGN OUT ERROR:",
@@ -493,7 +492,7 @@ function Account() {
         err?.message ||
           "Unable to sign out."
       );
-    } finally {
+
       setSigningOut(false);
     }
   };
@@ -577,7 +576,6 @@ function Account() {
                 className="absolute bottom-0 right-0 rounded-full bg-white p-2 text-black shadow-lg transition hover:bg-gray-200"
                 aria-label="Edit profile"
               >
-                <Camera size={15} />
               </button>
 
             </div>
@@ -591,8 +589,8 @@ function Account() {
               </h2>
 
               <p className="mt-1 truncate text-sm text-gray-400">
-                {email}
-              </p>
+                  {profile?.username || "No username available"}
+                </p>
 
               {profile?.bio && (
                 <p className="mt-3 line-clamp-2 text-sm text-gray-500">
@@ -648,36 +646,6 @@ function Account() {
 
                 <p className="mt-1 text-sm text-gray-500">
                   Username and bio
-                </p>
-
-              </div>
-
-              <ChevronRight
-                size={19}
-                className="shrink-0 text-gray-500"
-              />
-
-            </button>
-
-            {/* NOTIFICATIONS */}
-
-            <button
-              type="button"
-              className="flex w-full items-center gap-4 p-5 text-left transition hover:bg-white/[0.05]"
-            >
-
-              <div className="shrink-0 rounded-xl bg-purple-600/10 p-3 text-purple-400">
-                <Bell size={20} />
-              </div>
-
-              <div className="min-w-0 flex-1">
-
-                <p className="font-medium">
-                  Notifications
-                </p>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  Manage marketplace notifications
                 </p>
 
               </div>
@@ -914,27 +882,6 @@ function Account() {
                   3–30 characters. Letters, numbers
                   and underscores only.
                 </p>
-
-              </div>
-
-              {/* EMAIL */}
-
-              <div>
-
-                <label
-                  htmlFor="email"
-                  className="mb-2 block text-sm font-medium"
-                >
-                  Email
-                </label>
-
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  disabled
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-gray-500 outline-none"
-                />
 
               </div>
 

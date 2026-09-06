@@ -1006,9 +1006,6 @@ function CreateNFT({ user }) {
                     USD
                   </option>
 
-                  <option value="NGN">
-                    NGN
-                  </option>
                 </select>
               </div>
 
@@ -1356,9 +1353,6 @@ function CreateNFT({ user }) {
                     USD
                   </option>
 
-                  <option value="NGN">
-                    NGN
-                  </option>
                 </select>
               </div>
 
