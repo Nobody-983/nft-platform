@@ -229,7 +229,7 @@ function Marketplace() {
 
     const creator =
       seller?.display_name?.toLowerCase() ||
-      seller?.username?.toLowerCase() ||
+      (seller?.username?.toLowerCase() || "") ||
       "";
 
     const matchesSearch =
@@ -352,8 +352,7 @@ function Marketplace() {
 
               const creator =
                 seller?.display_name ||
-                seller?.username ||
-                "Unknown creator";
+                (seller?.username || "Unknown creator");
 
               const nftId = nft.id;
               const id = String(nftId);

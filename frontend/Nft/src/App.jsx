@@ -1,7 +1,9 @@
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import { WalletProvider, useWallet } from "./context/walletContext";
+import { WalletProvider } from "./context/walletContext";
+
+import ProtectedRoute from "./components/protectedRoute";
 
 import DashboardLayout from "./components/dashboardlayout";
 
@@ -16,8 +18,6 @@ import CreateNFT from "./pages/createNft";
 import Game from "./pages/game/Game";
 
 function AppContent() {
-  const { user } = useWallet();
-
   return (
     <Routes>
       {/* ================= AUTH ================= */}
@@ -31,32 +31,32 @@ function AppContent() {
       <Route element={<DashboardLayout />}>
         <Route
           path="/dashboard"
-          element={<Dashboard user={user} />}
+          element={<ProtectedRoute><Dashboard /></ProtectedRoute>}
         />
 
         <Route
           path="/marketplace"
-          element={<Marketplace />}
+          element={<ProtectedRoute><Marketplace /></ProtectedRoute>}
         />
 
         <Route
           path="/wallet"
-          element={<Wallet />}
+          element={<ProtectedRoute><Wallet /></ProtectedRoute>}
         />
 
         <Route
           path="/account"
-          element={<Account />}
+          element={<ProtectedRoute><Account /></ProtectedRoute>}
         />
 
         <Route
           path="/create-nft"
-          element={<CreateNFT user={user} />}
+          element={<ProtectedRoute><CreateNFT /></ProtectedRoute>}
         />
 
         <Route
           path="/game"
-          element={<Game />}
+          element={<ProtectedRoute><Game /></ProtectedRoute>}
         />
 
         <Route
