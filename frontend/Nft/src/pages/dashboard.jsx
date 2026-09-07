@@ -129,11 +129,13 @@ function Dashboard({ user }) {
   // =====================================================
 
   const userName =
+    userProfile?.username ||
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
     "Complete your profile";
 
   const userAvatar =
+    userProfile?.avatar_url ||
     user?.user_metadata?.avatar_url ||
     user?.user_metadata?.picture ||
     null;
@@ -300,6 +302,36 @@ function Dashboard({ user }) {
 
   useEffect(() => {
     fetchTrendingNFTs();
+  }, [user?.id]);
+
+  // =====================================================
+  // FETCH USER PROFILE
+  // =====================================================
+
+  const [userProfile, setUserProfile] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setUserProfile(null);
+      return;
+    }
+
+    const fetchProfile = async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("username, display_name, avatar_url, bio")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Profile fetch error:", error);
+        return;
+      }
+
+      setUserProfile(data);
+    };
+
+    fetchProfile();
   }, [user?.id]);
 
   // =====================================================

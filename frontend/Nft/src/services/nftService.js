@@ -71,7 +71,10 @@ async function getAuthenticatedUser() {
   } = await supabase.auth.getUser();
 
   if (error) {
-    throw error;
+    console.error("Supabase auth error:", error);
+    throw new Error(
+      "Your session has expired. Please log in again."
+    );
   }
 
   if (!user) {
@@ -130,7 +133,10 @@ export async function uploadNFTImage(file, userId) {
     });
 
   if (error) {
-    throw error;
+    console.error("Supabase storage upload error:", error);
+    throw new Error(
+      "Image upload failed. Please check your connection and try again."
+    );
   }
 
   const { data } = supabase.storage
@@ -249,7 +255,10 @@ export async function createNFT({
     .single();
 
   if (error) {
-    throw error;
+    console.error("Supabase NFT creation error:", error);
+    throw new Error(
+      "Unable to create NFT record in database. " + (error?.details || error?.message || "")
+    );
   }
 
   return data;

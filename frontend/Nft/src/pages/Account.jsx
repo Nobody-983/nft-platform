@@ -1,7 +1,6 @@
 import { useWallet } from "../context/walletContext";
 import { useEffect, useState, useNavigate } from "react";
 import {
-  Bell,
   Copy,
   ChevronRight,
   LogOut,

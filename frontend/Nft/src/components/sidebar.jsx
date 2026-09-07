@@ -5,7 +5,6 @@ import {
   Wallet,
   Menu,
   X,
-  PlusSquare,
   User,
   Gamepad,
 } from "lucide-react";
@@ -22,24 +21,19 @@ const navigation = [
     icon: Store,
   },
   {
-    name: "My NFTs",
-    path: "/create-nft",
-    icon: PlusSquare,
-  },
-  {
     name: "Wallet",
     path: "/wallet",
     icon: Wallet,
   },
   {
-    name: "Account",
-    path: "/account",
-    icon: User,
-  },
-  {
     name: "Game",
     path: "/game",
     icon: Gamepad,
+  },
+  {
+    name: "Account",
+    path: "/account",
+    icon: User,
   },
 ];
 
