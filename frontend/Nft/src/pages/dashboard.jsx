@@ -123,6 +123,7 @@ function Dashboard({ user }) {
   const [loadingTrending, setLoadingTrending] = useState(true);
   const [userLikes, setUserLikes] = useState(new Set());
   const [likingNFT, setLikingNFT] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   // =====================================================
   // USER INFORMATION
@@ -307,8 +308,6 @@ function Dashboard({ user }) {
   // =====================================================
   // FETCH USER PROFILE
   // =====================================================
-
-  const [userProfile, setUserProfile] = useState(null);
 
   useEffect(() => {
     if (!user?.id) {

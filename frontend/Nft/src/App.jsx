@@ -31,7 +31,11 @@ function AppContent() {
       <Route element={<DashboardLayout />}>
         <Route
           path="/dashboard"
-          element={<ProtectedRoute><Dashboard /></ProtectedRoute>}
+          element={
+          // <ProtectedRoute>
+            <Dashboard />
+            // {/* </ProtectedRoute> */}
+            }
         />
 
         <Route
