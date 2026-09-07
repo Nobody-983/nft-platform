@@ -26,6 +26,7 @@ export function WalletProvider({ children }) {
   const [walletAddress, setWalletAddress] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true); // eslint-disable-line no-unused-vars
 
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -79,6 +80,7 @@ export function WalletProvider({ children }) {
 
     async function restoreSession() {
       try {
+        setIsInitializing(true);
         const savedAddress = localStorage.getItem("nimiq_wallet");
         const {
           session,
@@ -144,6 +146,10 @@ export function WalletProvider({ children }) {
         }
       } catch (err) {
         console.warn("Session restore error:", err);
+      } finally {
+        if (mounted) {
+          setIsInitializing(false);
+        }
       }
     }
 

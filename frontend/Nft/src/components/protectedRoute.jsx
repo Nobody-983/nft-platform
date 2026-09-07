@@ -3,7 +3,12 @@ import { useWallet } from "../context/walletContext";
 
 function ProtectedRoute({ children }) {
   const location = useLocation();
-  const { user } = useWallet();
+  const { user, isInitializing } = useWallet();
+
+  // During initial session restoration, don't redirect
+  if (isInitializing) {
+    return children;
+  }
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;

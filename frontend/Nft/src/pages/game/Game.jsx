@@ -28,6 +28,10 @@ function Game() {
 
   const [claimedRewardLevels, setClaimedRewardLevels] = useState([]);
 
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(true);
+  const [errorLeaderboard, setErrorLeaderboard] = useState("");
+  const [leaderboard, setLeaderboard] = useState([]);
+
   useEffect(() => {
     if (!user?.id) return;
     supabase.from("reward_claims").select("reward_level").eq("user_id", user.id).then(
@@ -37,6 +41,32 @@ function Game() {
         }
       }
     );
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    setLoadingLeaderboard(true);
+    setErrorLeaderboard("");
+
+    supabase.from("profiles").select("username, tap_count").order("tap_count", { ascending: false }).limit(10).then(
+      (res) => {
+        if (res.data && res.data.length > 0) {
+          setLeaderboard(res.data.map((r, index) => ({
+            username: r.username || `Player ${index + 1}`,
+            tap_count: r.tap_count || 0,
+            id: r.id,
+          })));
+        } else {
+          setLeaderboard([]);
+        }
+        setLoadingLeaderboard(false);
+      }
+    ).catch((err) => {
+      console.error("Leaderboard fetch error:", err);
+      setErrorLeaderboard("Failed to load leaderboard.");
+      setLoadingLeaderboard(false);
+    });
   }, [user?.id]);
 
   const hasClaimedReward = (level) => claimedRewardLevels.includes(level);
@@ -79,11 +109,19 @@ function Game() {
         recipient: walletAddress,
         valueInNim: price,
       });
-      await new Promise((r) => setTimeout(r, 3000));
-      setTapCount(tapCount + taps);
+      // Update tap count in database first (server-side verification)
       if (user?.id) {
-        await supabase.from("profiles").update({ tap_count: tapCount + taps }).eq("id", user.id);
+        const { error: dbError } = await supabase
+          .from("profiles")
+          .update({ tap_count: tapCount + taps })
+          .eq("id", user.id);
+
+        if (dbError) {
+          throw new Error("Failed to record tap purchase. Please try again.");
+        }
       }
+      // Update local state after successful database write
+      setTapCount(tapCount + taps);
       setError(`Purchased ${taps} taps for ${price} NIM`);
     } catch (err) {
       setError(err?.message || "Purchase failed");
@@ -224,7 +262,7 @@ function Game() {
         </div>
       )}
 
-      <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+<div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
         <h2 className="text-xl font-bold mb-4">Statistics</h2>
         <div className="grid grid-cols-2 gap-4">
           <div><p className="text-sm text-gray-400">Total taps</p><p className="text-2xl font-bold">{tapCount}</p></div>
@@ -233,6 +271,53 @@ function Game() {
           <div><p className="text-sm text-gray-400">Best streak</p><p className="text-2xl font-bold">—</p></div>
         </div>
       </div>
+
+      {/* =====================================================
+          LEADERBOARD
+      ===================================================== */}
+      {user?.id && (
+        <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <h2 className="text-xl font-bold mb-4">Leaderboard</h2>
+          {loadingLeaderboard ? (
+            <div className="flex min-h-[200px] items-center justify-center">
+              <Loader2 size={20} className="animate-spin text-purple-500" />
+              <p className="mt-2">Loading leaderboard...</p>
+            </div>
+          ) : errorLeaderboard ? (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-6 text-center">
+              <p className="text-red-400">{errorLeaderboard}</p>
+              <p className="mt-2 text-sm text-gray-500">Try again later.</p>
+            </div>
+          ) : leaderboard.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-400">No leaderboard data available</p>
+              <p className="mt-2 text-sm text-gray-500">Be the first to play!</p>
+            </div>
+          ) : (
+            <MotionDiv
+              variants={staggerContainer}
+              className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              {leaderboard.map((entry, index) => (
+                <MotionDiv
+                  key={entry.id}
+                  variants={fadeUp}
+                  className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+                >
+                  <span className="w-8 h-8 rounded-full bg-purple-600/10 text-purple-400 flex items-center justify-center text-sm font-bold">
+                    {index + 1}
+                  </span>
+                  <span className="flex-1 truncate text-white">
+                    <p className="font-medium">{entry.username}</p>
+                    <p className="text-xs text-gray-400">#{entry.tap_count} taps</p>
+                  </span>
+                </MotionDiv>
+              ))}
+            </MotionDiv>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }

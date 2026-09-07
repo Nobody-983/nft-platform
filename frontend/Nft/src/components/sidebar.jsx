@@ -7,6 +7,7 @@ import {
   X,
   User,
   Gamepad,
+  ImagePlus,
 } from "lucide-react";
 
 const navigation = [
@@ -29,6 +30,11 @@ const navigation = [
     name: "Game",
     path: "/game",
     icon: Gamepad,
+  },
+  {
+    name: "Create NFT",
+    path: "/create-nft",
+    icon: ImagePlus,
   },
   {
     name: "Account",

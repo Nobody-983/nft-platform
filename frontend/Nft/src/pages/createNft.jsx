@@ -19,6 +19,7 @@ import {
   staggerContainer,
 } from "../components/motion";
 
+import { useWallet } from "../context/walletContext";
 import { supabase } from "../lib/supabase";
 
 import {
@@ -64,7 +65,8 @@ const CATEGORIES = [
 // COMPONENT
 // =========================================================
 
-function CreateNFT({ user }) {
+function CreateNFT() {
+  const { user } = useWallet();
   const fileInputRef = useRef(null);
 
   const [form, setForm] = useState({
@@ -159,7 +161,7 @@ function CreateNFT({ user }) {
   useEffect(() => {
     fetchNFTs();
     fetchListings();
-  }, [user?.id]);
+  }, []);
 
   // =========================================================
   // FIND ACTIVE LISTING

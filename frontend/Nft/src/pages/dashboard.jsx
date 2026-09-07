@@ -303,7 +303,7 @@ function Dashboard({ user }) {
 
   useEffect(() => {
     fetchTrendingNFTs();
-  }, [user?.id]);
+  }, []);
 
   // =====================================================
   // FETCH USER PROFILE
@@ -331,7 +331,7 @@ function Dashboard({ user }) {
     };
 
     fetchProfile();
-  }, [user?.id]);
+  }, []);
 
   // =====================================================
   // LIKE / UNLIKE
