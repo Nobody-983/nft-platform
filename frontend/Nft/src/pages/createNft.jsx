@@ -188,6 +188,13 @@ function CreateNFT() {
     }));
   };
 
+  const handleCurrencyChange = (e) => {
+    setForm((current) => ({
+      ...current,
+      currency: e.target.value,
+    }));
+  };
+
   // =========================================================
   // VALIDATE IMAGE
   // =========================================================
@@ -913,10 +920,9 @@ function CreateNFT() {
                 name="name"
                 value={form.name}
                 onChange={handleChange}
-                disabled={loading}
                 maxLength={100}
                 placeholder="Enter NFT name"
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500"
               />
             </div>
 
@@ -931,11 +937,10 @@ function CreateNFT() {
                 name="description"
                 value={form.description}
                 onChange={handleChange}
-                disabled={loading}
                 maxLength={1000}
                 rows={5}
                 placeholder="Describe your NFT..."
-                className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500"
               />
             </div>
 
@@ -950,8 +955,7 @@ function CreateNFT() {
                 name="category"
                 value={form.category}
                 onChange={handleChange}
-                disabled={loading}
-                className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500"
               >
                 {CATEGORIES.map((category) => (
                   <option
@@ -978,11 +982,10 @@ function CreateNFT() {
                   name="price"
                   value={form.price}
                   onChange={handleChange}
-                  disabled={loading}
                   min="0"
                   step="0.00000001"
                   placeholder="0.00"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500"
                 />
               </div>
 
@@ -997,8 +1000,7 @@ function CreateNFT() {
                   name="currency"
                   value={form.currency}
                   onChange={handleChange}
-                  disabled={loading}
-                  className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500"
                 >
                   <option value="NIM">
                     NIM

@@ -114,10 +114,9 @@ export async function fetchNimiqBalance(address) {
   const formatted = cleanAddress(address);
 
   // Try public Nimiq JSON-RPC endpoints
-  const endpoints = [
+const endpoints = [
     "https://rpc.nimiqwatch.com",
     "https://rpc.pos.nimiq.com",
-    "https://rpc.pos.nimiq-testnet.com",
   ];
 
   for (const endpoint of endpoints) {
