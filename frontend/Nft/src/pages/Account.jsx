@@ -1,16 +1,8 @@
-import { useWallet } from "../context/walletContext";
-import { useEffect, useState, useNavigate } from "react";
-import {
-  Copy,
-  ChevronRight,
-  LogOut,
-  User,
-  Wallet,
-  X,
-  Loader2,
-  Save,
-} from "lucide-react";
 
+import { useEffect, useState } from "react";
+import { Copy, ChevronRight, LogOut, User, Wallet, X, Loader2, Save } from "lucide-react";
+
+import { useWallet } from "../context/walletContext";
 import { supabase } from "../lib/supabase";
 
 function Account() {
@@ -21,8 +13,8 @@ function Account() {
     profile: walletProfile,
   } = useWallet();
 
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [user, setUser] = useState(walletUser);
+  const [profile, setProfile] = useState(walletProfile);
 
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -39,132 +31,84 @@ function Account() {
   const [copied, setCopied] = useState(false);
 
   // ==========================================
-  // LOAD ACCOUNT
+  // SYNC WALLET CONTEXT
+  // ==========================================
+
+  useEffect(() => {
+    setUser(walletUser);
+    setProfile(walletProfile);
+
+    setUsername(walletProfile?.username || "");
+    setBio(walletProfile?.bio || "");
+
+    setLoadingProfile(false);
+  }, [walletUser, walletProfile]);
+
+  // ==========================================
+  // FALLBACK PROFILE LOAD
   // ==========================================
 
   useEffect(() => {
     let mounted = true;
 
-    const loadAccount = async () => {
+    const loadProfile = async () => {
+      // WalletContext already has everything we need.
+      if (walletUser && walletProfile) {
+        return;
+      }
+
+      if (!connectedWalletAddress) {
+        if (mounted) {
+          setLoadingProfile(false);
+        }
+        return;
+      }
+
       try {
         setLoadingProfile(true);
         setError("");
 
-        // The wallet provider already restores the Supabase session. Use that
-        // state first so this page does not race it on initial render.
-        if (walletUser && walletProfile) {
-          if (mounted) {
-            setUser(walletUser);
-            setProfile(walletProfile);
-            setUsername(walletProfile?.username || "");
-            setBio(walletProfile?.bio || "");
-          }
-          return;
-        }
-
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.error("GET SESSION ERROR:", sessionError);
-
-          if (mounted) {
-            setError(
-              sessionError.message ||
-                "Unable to load your account."
-            );
-          }
-
-          return;
-        }
-
-        if (!session?.user) {
-          if (connectedWalletAddress) {
-            const { data: profileData } = await supabase
-              .from("profiles")
-              .select(`
-                id,
-                username,
-                display_name,
-                avatar_url,
-                bio,
-                wallet_address,
-                created_at,
-                updated_at
-              `)
-              .eq("wallet_address", connectedWalletAddress)
-              .maybeSingle();
-
-            if (mounted && profileData) {
-              setProfile(profileData);
-              setUsername(profileData?.username || "");
-              setBio(profileData?.bio || "");
-              return;
-            } else if (mounted) {
-              const clean = connectedWalletAddress.replace(/\s+/g, "");
-              setProfile({
-                wallet_address: connectedWalletAddress,
-                display_name: `Nimiq ${clean.slice(0, 4)}...${clean.slice(-4)}`,
-                username: `user_${clean.slice(2, 8).toLowerCase()}`,
-              });
-              return;
-            }
-          }
-
-          if (mounted) {
-            setError("No active session found. Please connect your Nimiq wallet.");
-          }
-
-          return;
-        }
-
-        const currentUser = session.user;
-
-        if (!mounted) return;
-
-        setUser(currentUser);
-
-        // ==========================================
-        // LOAD PROFILE
-        // ==========================================
-
-        const { data, error: profileError } =
-          await supabase
-            .from("profiles")
-            .select(`
-              id,
-              username,
-              display_name,
-              avatar_url,
-              bio,
-              wallet_address,
-              created_at,
-              updated_at
-            `)
-            .eq("id", currentUser.id)
-            .maybeSingle();
+        const { data, error: profileError } = await supabase
+          .from("profiles")
+          .select(`
+            id,
+            username,
+            display_name,
+            avatar_url,
+            bio,
+            wallet_address,
+            created_at,
+            updated_at
+          `)
+          .eq("wallet_address", connectedWalletAddress)
+          .maybeSingle();
 
         if (!mounted) return;
 
         if (profileError) {
-          console.error(
-            "LOAD PROFILE ERROR:",
-            profileError
-          );
+          console.error("LOAD PROFILE ERROR:", profileError);
 
           setError(
-            profileError.message ||
-              "Unable to load your profile."
+            profileError.message || "Unable to load your profile."
           );
 
           return;
         }
 
-        setProfile(data);
-        setUsername(data?.username || "");
-        setBio(data?.bio || "");
+        if (data) {
+          setProfile(data);
+          setUsername(data.username || "");
+          setBio(data.bio || "");
+          return;
+        }
+
+        const clean = connectedWalletAddress.replace(/\s+/g, "");
+
+        setProfile({
+          wallet_address: connectedWalletAddress,
+          display_name: `Nimiq ${clean.slice(0, 4)}...${clean.slice(-4)}`,
+          username: `user_${clean.slice(2, 8).toLowerCase()}`,
+        });
       } catch (err) {
         console.error("ACCOUNT LOAD ERROR:", err);
 
@@ -181,7 +125,7 @@ function Account() {
       }
     };
 
-    loadAccount();
+    loadProfile();
 
     return () => {
       mounted = false;
@@ -200,9 +144,6 @@ function Account() {
   const currentUsername =
     profile?.username || "username";
 
-  const email =
-    user?.email || "No email available";
-
   const avatar =
     profile?.avatar_url || null;
 
@@ -210,7 +151,9 @@ function Account() {
     displayName.charAt(0).toUpperCase();
 
   const walletAddress =
-    profile?.wallet_address || connectedWalletAddress || "";
+    profile?.wallet_address ||
+    connectedWalletAddress ||
+    "";
 
   const shortWallet = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`
@@ -265,16 +208,12 @@ function Account() {
     }
 
     if (cleanUsername.length < 3) {
-      setError(
-        "Username must be at least 3 characters."
-      );
+      setError("Username must be at least 3 characters.");
       return;
     }
 
     if (cleanUsername.length > 30) {
-      setError(
-        "Username must be 30 characters or less."
-      );
+      setError("Username must be 30 characters or less.");
       return;
     }
 
@@ -283,23 +222,19 @@ function Account() {
       setError("");
       setSuccess("");
 
-      const { data, error: updateError } =
-        await supabase
-          .from("profiles")
-          .update({
-            username: cleanUsername,
-            bio: bio.trim(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", user.id)
-          .select()
-          .single();
+      const { data, error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          username: cleanUsername,
+          bio: bio.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id)
+        .select()
+        .single();
 
       if (updateError) {
-        console.error(
-          "UPDATE PROFILE ERROR:",
-          updateError
-        );
+        console.error("UPDATE PROFILE ERROR:", updateError);
 
         if (updateError.code === "23505") {
           setError("That username is already taken.");
@@ -321,19 +256,14 @@ function Account() {
       setUsername(data.username || "");
       setBio(data.bio || "");
 
-      setSuccess(
-        "Profile updated successfully."
-      );
+      setSuccess("Profile updated successfully.");
 
       setTimeout(() => {
         setShowEditProfile(false);
         setSuccess("");
       }, 1000);
     } catch (err) {
-      console.error(
-        "UPDATE PROFILE ERROR:",
-        err
-      );
+      console.error("UPDATE PROFILE ERROR:", err);
 
       setError(
         err?.message ||
@@ -352,9 +282,7 @@ function Account() {
     if (!walletAddress) return;
 
     try {
-      await navigator.clipboard.writeText(
-        walletAddress
-      );
+      await navigator.clipboard.writeText(walletAddress);
 
       setCopied(true);
 
@@ -362,10 +290,7 @@ function Account() {
         setCopied(false);
       }, 2000);
     } catch (err) {
-      console.error(
-        "COPY WALLET ERROR:",
-        err
-      );
+      console.error("COPY WALLET ERROR:", err);
     }
   };
 
@@ -376,7 +301,6 @@ function Account() {
   const handleDisconnectWallet = async () => {
     if (
       !walletAddress ||
-      !user?.id ||
       disconnecting
     ) {
       return;
@@ -393,49 +317,18 @@ function Account() {
       setError("");
       setSuccess("");
 
-      const { data, error: updateError } =
-        await supabase
-          .from("profiles")
-          .update({
-            wallet_address: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", user.id)
-          .select()
-          .single();
-
-      if (updateError) {
-        console.error(
-          "DISCONNECT WALLET ERROR:",
-          updateError
-        );
-
-        setError(
-          updateError.message ||
-            "Unable to disconnect your wallet."
-        );
-
-        return;
-      }
-
-      // Clear wallet state from the application too.
-      disconnectWallet();
-
-      setProfile((previous) => ({
-        ...previous,
-        ...data,
-      }));
-
-      setSuccess("Wallet disconnected.");
-
-      setTimeout(() => {
-        setSuccess("");
-      }, 2000);
+      /*
+       * Do not manually update the profile here.
+       * disconnectWallet() handles:
+       * - Nimiq disconnect
+       * - Supabase logout
+       * - localStorage cleanup
+       * - React wallet state cleanup
+       * - redirect to /login
+       */
+      await disconnectWallet();
     } catch (err) {
-      console.error(
-        "DISCONNECT WALLET ERROR:",
-        err
-      );
+      console.error("DISCONNECT WALLET ERROR:", err);
 
       setError(
         err?.message ||
@@ -457,35 +350,13 @@ function Account() {
       setSigningOut(true);
       setError("");
 
-      // Clear the wallet state first.
-      disconnectWallet();
-
-      // Then sign out of Supabase Auth.
-      const { error: signOutError } =
-        await supabase.auth.signOut();
-
-      if (signOutError) {
-        console.error(
-          "SIGN OUT ERROR:",
-          signOutError
-        );
-
-        setError(
-          signOutError.message ||
-            "Unable to sign out."
-        );
-
-        setSigningOut(false);
-        return;
-      }
-
-      // Redirect to wallet connection page.
-      navigate("/login");
+      /*
+       * disconnectWallet already signs out of Supabase
+       * and redirects to /login.
+       */
+      await disconnectWallet();
     } catch (err) {
-      console.error(
-        "SIGN OUT ERROR:",
-        err
-      );
+      console.error("SIGN OUT ERROR:", err);
 
       setError(
         err?.message ||
@@ -517,7 +388,7 @@ function Account() {
 
       <div className="max-w-4xl space-y-6">
 
-        {/* LOADING NOTICE */}
+        {/* LOADING */}
 
         {loadingProfile && (
           <div className="flex items-center gap-2 rounded-xl border border-purple-500/20 bg-purple-500/10 px-4 py-3 text-sm text-purple-300">
@@ -545,9 +416,7 @@ function Account() {
           </div>
         )}
 
-        {/* =========================
-            PROFILE
-        ========================= */}
+        {/* PROFILE */}
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6">
 
@@ -569,14 +438,6 @@ function Account() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={openEditProfile}
-                className="absolute bottom-0 right-0 rounded-full bg-white p-2 text-black shadow-lg transition hover:bg-gray-200"
-                aria-label="Edit profile"
-              >
-              </button>
-
             </div>
 
             {/* INFO */}
@@ -588,8 +449,8 @@ function Account() {
               </h2>
 
               <p className="mt-1 truncate text-sm text-gray-400">
-                  {profile?.username || "No username available"}
-                </p>
+                {profile?.username || "No username available"}
+              </p>
 
               {profile?.bio && (
                 <p className="mt-3 line-clamp-2 text-sm text-gray-500">
@@ -599,7 +460,7 @@ function Account() {
 
             </div>
 
-            {/* EDIT BUTTON */}
+            {/* EDIT */}
 
             <button
               type="button"
@@ -613,9 +474,7 @@ function Account() {
 
         </section>
 
-        {/* =========================
-            ACCOUNT
-        ========================= */}
+        {/* ACCOUNT */}
 
         <section>
 
@@ -624,8 +483,6 @@ function Account() {
           </h2>
 
           <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-
-            {/* PERSONAL INFORMATION */}
 
             <button
               type="button"
@@ -660,9 +517,7 @@ function Account() {
 
         </section>
 
-        {/* =========================
-            WALLET
-        ========================= */}
+        {/* WALLET */}
 
         <section>
 
@@ -736,7 +591,9 @@ function Account() {
                 </button>
 
               </>
+
             ) : (
+
               <div className="mt-5 rounded-xl bg-black/20 px-4 py-4">
 
                 <p className="text-sm text-gray-500">
@@ -744,15 +601,14 @@ function Account() {
                 </p>
 
               </div>
+
             )}
 
           </div>
 
         </section>
 
-        {/* =========================
-            SIGN OUT
-        ========================= */}
+        {/* SIGN OUT */}
 
         <section>
 
@@ -792,9 +648,7 @@ function Account() {
 
       </div>
 
-      {/* =========================
-          EDIT PROFILE MODAL
-      ========================= */}
+      {/* EDIT PROFILE MODAL */}
 
       {showEditProfile && (
 
@@ -866,9 +720,7 @@ function Account() {
                     type="text"
                     value={username}
                     onChange={(event) =>
-                      setUsername(
-                        event.target.value
-                      )
+                      setUsername(event.target.value)
                     }
                     placeholder="username"
                     maxLength={30}
@@ -878,8 +730,7 @@ function Account() {
                 </div>
 
                 <p className="mt-2 text-xs text-gray-600">
-                  3–30 characters. Letters, numbers
-                  and underscores only.
+                  3–30 characters. Letters, numbers and underscores only.
                 </p>
 
               </div>
@@ -899,9 +750,7 @@ function Account() {
                   id="bio"
                   value={bio}
                   onChange={(event) =>
-                    setBio(
-                      event.target.value
-                    )
+                    setBio(event.target.value)
                   }
                   placeholder="Tell people a little about yourself..."
                   maxLength={160}

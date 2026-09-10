@@ -1,14 +1,13 @@
-import { useEffect, useState } from "react";
-import { Heart, Search, Plus, ArrowUpRight, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
+import { useEffect, useState } from "react";
 import {
-  MotionDiv,
-  MotionButton,
-  fadeUp,
-  fadeIn,
-  staggerContainer,
-} from "../components/motion";
+  Heart,
+  Search,
+  Plus,
+  ArrowUpRight,
+  Loader2,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { getMarketplaceListings } from "../services/marketService";
 import { supabase } from "../lib/supabase";
@@ -107,7 +106,9 @@ function Marketplace() {
   const toggleLike = async (nftId) => {
     const id = String(nftId);
 
-    if (likingNFT === id) return;
+    if (likingNFT === id) {
+      return;
+    }
 
     try {
       setLikingNFT(id);
@@ -117,15 +118,16 @@ function Marketplace() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        setError("Please connect your Nimiq wallet to like NFTs.");
+        setError(
+          "Please connect your Nimiq wallet to like NFTs."
+        );
         return;
       }
 
       const currentlyLiked = likedNFTs.has(id);
 
       // =================================================
-      // OPTIMISTIC UI
-      // Change the heart immediately
+      // UNLIKE
       // =================================================
 
       if (currentlyLiked) {
@@ -149,7 +151,6 @@ function Marketplace() {
         if (deleteError) {
           console.error("UNLIKE ERROR:", deleteError);
 
-          // Roll UI back if database failed
           setLikedNFTs((previous) => {
             const updated = new Set(previous);
             updated.add(id);
@@ -192,7 +193,6 @@ function Marketplace() {
       if (insertError) {
         console.error("LIKE INSERT ERROR:", insertError);
 
-        // Roll UI back
         setLikedNFTs((previous) => {
           const updated = new Set(previous);
           updated.delete(id);
@@ -203,8 +203,6 @@ function Marketplace() {
           ...previous,
           [id]: Math.max(0, (previous[id] || 0) - 1),
         }));
-
-        return;
       }
     } catch (err) {
       console.error("TOGGLE LIKE ERROR:", err);
@@ -221,7 +219,9 @@ function Marketplace() {
     const nft = item.nfts;
     const seller = item.profiles;
 
-    if (!nft) return false;
+    if (!nft) {
+      return false;
+    }
 
     const searchValue = search.toLowerCase();
 
@@ -229,7 +229,7 @@ function Marketplace() {
 
     const creator =
       seller?.display_name?.toLowerCase() ||
-      (seller?.username?.toLowerCase() || "") ||
+      seller?.username?.toLowerCase() ||
       "";
 
     const matchesSearch =
@@ -248,10 +248,7 @@ function Marketplace() {
 
       {/* HEADER */}
 
-      <MotionDiv
-        variants={fadeUp}
-        className="mb-8 flex flex-col gap-5 md:flex-row md:items-center md:justify-between"
-      >
+      <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
             Marketplace
@@ -262,21 +259,19 @@ function Marketplace() {
           </p>
         </div>
 
-        <MotionButton
+        <button
+          type="button"
           onClick={() => navigate("/create-nft")}
           className="flex w-fit items-center gap-2 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold transition hover:bg-purple-700"
         >
           <Plus size={18} />
           Create NFT
-        </MotionButton>
-      </MotionDiv>
+        </button>
+      </div>
 
       {/* SEARCH + CATEGORIES */}
 
-      <MotionDiv
-        variants={fadeUp}
-        className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"
-      >
+      <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full lg:max-w-md">
           <Search
             size={18}
@@ -294,7 +289,8 @@ function Marketplace() {
 
         <div className="flex gap-2 overflow-x-auto pb-1">
           {categories.map((category) => (
-            <MotionButton
+            <button
+              type="button"
               key={category}
               onClick={() => setSelectedCategory(category)}
               className={`whitespace-nowrap rounded-xl px-5 py-2.5 text-sm font-medium transition ${
@@ -304,10 +300,10 @@ function Marketplace() {
               }`}
             >
               {category}
-            </MotionButton>
+            </button>
           ))}
         </div>
-      </MotionDiv>
+      </div>
 
       {/* LOADING */}
 
@@ -323,10 +319,7 @@ function Marketplace() {
       {/* ERROR */}
 
       {!loading && error && (
-        <MotionDiv
-          variants={fadeIn}
-          className="rounded-2xl border border-red-500/20 bg-red-500/10 py-12 text-center"
-        >
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 py-12 text-center">
           <p className="text-lg font-semibold text-red-400">
             {error}
           </p>
@@ -334,7 +327,7 @@ function Marketplace() {
           <p className="mt-2 text-sm text-gray-500">
             Please try again later.
           </p>
-        </MotionDiv>
+        </div>
       )}
 
       {/* NFT GRID */}
@@ -342,17 +335,15 @@ function Marketplace() {
       {!loading &&
         !error &&
         filteredItems.length > 0 && (
-          <MotionDiv
-            variants={staggerContainer}
-            className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3"
-          >
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {filteredItems.map((item) => {
               const nft = item.nfts;
               const seller = item.profiles;
 
               const creator =
                 seller?.display_name ||
-                (seller?.username || "Unknown creator");
+                seller?.username ||
+                "Unknown creator";
 
               const nftId = nft.id;
               const id = String(nftId);
@@ -361,19 +352,18 @@ function Marketplace() {
               const totalLikes = likeCounts[id] || 0;
 
               return (
-                <MotionDiv
+                <div
                   key={item.id}
-                  variants={fadeUp}
                   className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] transition-colors duration-300 hover:-translate-y-1 hover:border-purple-500/40"
                 >
 
                   {/* IMAGE */}
 
                   <div className="relative aspect-[4/3] overflow-hidden">
-
                     <img
                       src={nft.image_url}
                       alt={nft.name}
+                      loading="lazy"
                       className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                     />
 
@@ -398,8 +388,8 @@ function Marketplace() {
                       }
                       className={`absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-md transition-all duration-200 ${
                         isLiked
-                          ? "bg-purple-600 text-white scale-105"
-                          : "bg-black/60 text-white hover:bg-purple-600 hover:scale-105"
+                          ? "scale-105 bg-purple-600 text-white"
+                          : "bg-black/60 text-white hover:scale-105 hover:bg-purple-600"
                       }`}
                     >
                       {likingNFT === id ? (
@@ -444,7 +434,6 @@ function Marketplace() {
                   {/* DETAILS */}
 
                   <div className="p-5">
-
                     <div className="mb-4">
                       <h2 className="text-lg font-semibold">
                         {nft.name}
@@ -456,7 +445,6 @@ function Marketplace() {
                     </div>
 
                     <div className="flex items-end justify-between">
-
                       <div>
                         <p className="text-xs text-gray-500">
                           Current price
@@ -467,7 +455,8 @@ function Marketplace() {
                         </p>
                       </div>
 
-                      <MotionButton
+                      <button
+                        type="button"
                         onClick={() =>
                           navigate(`/nft/${nft.id}`)
                         }
@@ -475,14 +464,13 @@ function Marketplace() {
                       >
                         View NFT
                         <ArrowUpRight size={15} />
-                      </MotionButton>
-
+                      </button>
                     </div>
                   </div>
-                </MotionDiv>
+                </div>
               );
             })}
-          </MotionDiv>
+          </div>
         )}
 
       {/* EMPTY */}
@@ -490,10 +478,7 @@ function Marketplace() {
       {!loading &&
         !error &&
         filteredItems.length === 0 && (
-          <MotionDiv
-            variants={fadeIn}
-            className="py-16 text-center"
-          >
+          <div className="py-16 text-center">
             <p className="text-lg font-semibold">
               No NFTs found
             </p>
@@ -503,7 +488,7 @@ function Marketplace() {
                 ? "No NFTs have been listed for sale yet."
                 : "Try another search or category."}
             </p>
-          </MotionDiv>
+          </div>
         )}
     </div>
   );

@@ -8,12 +8,6 @@ import {
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import {
-  MotionDiv,
-  MotionButton,
-  fadeUp,
-} from "../components/motion";
-
 import { useWallet } from "../context/walletContext";
 
 import {
@@ -28,9 +22,7 @@ function NFTDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const {
-    walletAddress,
-  } = useWallet();
+  const { walletAddress } = useWallet();
 
   const [nft, setNft] = useState(null);
   const [listing, setListing] = useState(null);
@@ -50,10 +42,7 @@ function NFTDetails() {
       setLoading(true);
       setBuyError("");
 
-      const {
-        data,
-        error,
-      } = await supabase
+      const { data, error } = await supabase
         .from("nfts")
         .select(`
           *,
@@ -88,10 +77,7 @@ function NFTDetails() {
 
       setListing(activeListing || null);
     } catch (error) {
-      console.error(
-        "Error loading NFT:",
-        error
-      );
+      console.error("Error loading NFT:", error);
 
       setNft(null);
       setListing(null);
@@ -149,12 +135,6 @@ function NFTDetails() {
 
       // ================= SELLER =================
 
-      /*
-       * seller_id is the Supabase profile/user ID.
-       * We need the seller's wallet address for
-       * the actual Nimiq transaction.
-       */
-
       const {
         data: sellerProfile,
         error: sellerError,
@@ -180,6 +160,7 @@ function NFTDetails() {
       }
 
       // Prevent buying your own NFT.
+
       if (
         sellerWallet.replace(/\s+/g, "").toUpperCase() ===
         walletAddress.replace(/\s+/g, "").toUpperCase()
@@ -217,12 +198,6 @@ function NFTDetails() {
 
       // ================= TRANSACTION =================
 
-      /*
-       * IMPORTANT:
-       * The recipient is the SELLER,
-       * not the buyer.
-       */
-
       const txHash =
         await sendNIMTransaction(provider, {
           recipient: sellerWallet,
@@ -236,12 +211,6 @@ function NFTDetails() {
       }
 
       // ================= CHECK LISTING =================
-
-      /*
-       * Give the transaction a moment to propagate.
-       * The listing is checked again before recording
-       * the sale.
-       */
 
       await new Promise((resolve) =>
         setTimeout(resolve, 3000)
@@ -349,8 +318,7 @@ function NFTDetails() {
           currency: currency,
           transaction_hash: txHash,
           status: "completed",
-          created_at:
-            new Date().toISOString(),
+          created_at: new Date().toISOString(),
         });
 
       if (saleError) {
@@ -358,12 +326,6 @@ function NFTDetails() {
           "Failed to record sale:",
           saleError
         );
-
-        /*
-         * We do NOT attempt to automatically reverse
-         * the NIM transaction. Blockchain transactions
-         * cannot simply be rolled back.
-         */
 
         throw new Error(
           "Payment was submitted, but the marketplace could not record the sale."
@@ -427,14 +389,15 @@ function NFTDetails() {
           NFT not found
         </h1>
 
-        <MotionButton
+        <button
+          type="button"
           onClick={() =>
             navigate("/marketplace")
           }
-          className="mt-5 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold hover:bg-purple-700"
+          className="mt-5 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold transition hover:bg-purple-700"
         >
           Back to Marketplace
-        </MotionButton>
+        </button>
       </div>
     );
   }
@@ -453,7 +416,8 @@ function NFTDetails() {
 
       {/* BACK */}
 
-      <MotionButton
+      <button
+        type="button"
         onClick={() =>
           navigate("/marketplace")
         }
@@ -461,7 +425,7 @@ function NFTDetails() {
       >
         <ArrowLeft size={18} />
         Back to Marketplace
-      </MotionButton>
+      </button>
 
       {/* DETAILS */}
 
@@ -469,10 +433,7 @@ function NFTDetails() {
 
         {/* IMAGE */}
 
-        <MotionDiv
-          variants={fadeUp}
-          className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
-        >
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           {nft.image_url ? (
             <img
               src={nft.image_url}
@@ -484,14 +445,12 @@ function NFTDetails() {
               No image available
             </div>
           )}
-        </MotionDiv>
+        </div>
 
         {/* INFORMATION */}
 
-        <MotionDiv
-          variants={fadeUp}
-          className="flex flex-col justify-center"
-        >
+        <div className="flex flex-col justify-center">
+
           {/* CATEGORY */}
 
           <div className="mb-4 inline-flex w-fit rounded-lg bg-purple-600/10 px-3 py-1.5 text-xs font-medium text-purple-400">
@@ -549,9 +508,7 @@ function NFTDetails() {
 
           {buySuccess && (
             <div className="mt-6 flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-4 text-sm text-green-400">
-              <CheckCircle2
-                size={20}
-              />
+              <CheckCircle2 size={20} />
 
               <div>
                 <p className="font-semibold">
@@ -576,7 +533,8 @@ function NFTDetails() {
           {/* BUY */}
 
           {listing ? (
-            <MotionButton
+            <button
+              type="button"
               onClick={handleBuyNFT}
               disabled={buying}
               className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-4 font-semibold transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -591,19 +549,17 @@ function NFTDetails() {
                 </>
               ) : (
                 <>
-                  <ShoppingBag
-                    size={19}
-                  />
+                  <ShoppingBag size={19} />
                   Buy NFT
                 </>
               )}
-            </MotionButton>
+            </button>
           ) : (
             <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 text-center text-sm text-gray-500">
               This NFT is not currently listed for sale.
             </div>
           )}
-        </MotionDiv>
+        </div>
       </div>
     </div>
   );
