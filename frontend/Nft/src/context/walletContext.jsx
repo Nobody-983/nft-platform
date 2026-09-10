@@ -7,6 +7,8 @@ import {
   useCallback,
 } from "react";
 
+import { useNavigate } from "react-router-dom";
+
 import {
   initNimiq,
   fetchNimiqBalance,
@@ -23,6 +25,8 @@ import {
 const WalletContext = createContext(null);
 
 export function WalletProvider({ children }) {
+  const navigate = useNavigate();
+
   const [nimiq, setNimiq] = useState(null);
   const [walletAddress, setWalletAddress] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -80,7 +84,6 @@ export function WalletProvider({ children }) {
         const savedAddress =
           localStorage.getItem("nimiq_wallet");
 
-        // Restore Supabase session first.
         const {
           session,
           user: existingUser,
@@ -89,7 +92,7 @@ export function WalletProvider({ children }) {
 
         if (!mounted) return;
 
-        // Restore wallet address from local storage.
+        // Restore saved wallet.
         if (savedAddress) {
           setWalletAddress(savedAddress);
           setIsConnected(true);
@@ -97,7 +100,7 @@ export function WalletProvider({ children }) {
           await refreshBalance(savedAddress);
         }
 
-        // Restore existing marketplace session.
+        // Restore Supabase session.
         if (session && existingUser) {
           setUser(existingUser);
           setProfile(existingProfile);
@@ -105,8 +108,6 @@ export function WalletProvider({ children }) {
           const profileAddress =
             existingProfile?.wallet_address;
 
-          // If local storage doesn't have the wallet,
-          // recover it from the marketplace profile.
           if (!savedAddress && profileAddress) {
             setWalletAddress(profileAddress);
             setIsConnected(true);
@@ -120,8 +121,8 @@ export function WalletProvider({ children }) {
           }
         }
 
-        // If a wallet exists but Supabase session/profile
-        // is missing, recreate/restore the marketplace account.
+        // Restore marketplace account if wallet exists
+        // but the Supabase session is missing.
         if (
           mounted &&
           savedAddress &&
@@ -161,11 +162,10 @@ export function WalletProvider({ children }) {
 
           if (mounted && provider) {
             setNimiq(provider);
-
             await refreshNetwork(provider);
           }
         } catch {
-          // Expected when opened outside Nimiq Pay.
+          // Expected outside Nimiq Pay.
         }
       } catch (err) {
         console.warn(
@@ -195,7 +195,7 @@ export function WalletProvider({ children }) {
     setError(null);
 
     try {
-      // 1. Initialize Nimiq provider.
+      // 1. Initialize Nimiq.
       const provider =
         nimiq ||
         (await initNimiq({
@@ -212,7 +212,7 @@ export function WalletProvider({ children }) {
         setNimiq(provider);
       }
 
-      // 2. Get selected Nimiq account.
+      // 2. Get selected wallet account.
       const accounts =
         await provider.listAccounts();
 
@@ -231,7 +231,7 @@ export function WalletProvider({ children }) {
         );
       }
 
-      // Wallet connection succeeded.
+      // Wallet is connected.
       setWalletAddress(address);
       setIsConnected(true);
 
@@ -240,43 +240,24 @@ export function WalletProvider({ children }) {
         address
       );
 
-      let profileProvisioningError = null;
+      // 3. Authenticate/provision marketplace account.
+      const {
+        user: authUser,
+        profile: authProfile,
+      } = await loginWithWallet(address);
 
-      // 3. Create/restore marketplace account.
-      try {
-        const {
-          user: authUser,
-          profile: authProfile,
-        } = await loginWithWallet(address);
-
-        setUser(authUser);
-        setProfile(authProfile);
-      } catch (profileError) {
-        console.error(
-          "Marketplace account provisioning error:",
-          profileError
-        );
-
-        profileProvisioningError =
-          profileError;
-      }
+      setUser(authUser);
+      setProfile(authProfile);
 
       // 4. Refresh wallet information.
       await refreshBalance(address);
       await refreshNetwork(provider);
 
-      if (profileProvisioningError) {
-        const provisioningError =
-          new Error(
-            profileProvisioningError.message ||
-              "Wallet connected, but the marketplace account could not be created."
-          );
-
-        provisioningError.walletConnected =
-          true;
-
-        throw provisioningError;
-      }
+      // 5. Everything succeeded.
+      // Send the user to the dashboard.
+      navigate("/dashboard", {
+        replace: true,
+      });
 
       return address;
     } catch (err) {
@@ -303,8 +284,8 @@ export function WalletProvider({ children }) {
 
       setError(userFriendlyError);
 
-      // Only clear the wallet if the wallet itself
-      // did not successfully connect.
+      // Only clear the wallet when the connection
+      // itself did not succeed.
       if (!err?.walletConnected) {
         setWalletAddress(null);
         setIsConnected(false);
@@ -366,6 +347,11 @@ export function WalletProvider({ children }) {
     setConsensus(false);
     setBlockNumber(null);
     setError(null);
+
+    // Return to wallet/login page after disconnecting.
+    navigate("/login", {
+      replace: true,
+    });
   };
 
   // ================= CONTEXT VALUE =================
