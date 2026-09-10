@@ -1,3 +1,4 @@
+
 import { supabase } from "../lib/supabase";
 
 // =========================================================
@@ -52,9 +53,7 @@ function validateImage(file) {
     !extension ||
     !ALLOWED_EXTENSIONS.includes(extension)
   ) {
-    throw new Error(
-      "Invalid image file extension."
-    );
+    throw new Error("Invalid image file extension.");
   }
 
   return extension;
@@ -72,8 +71,10 @@ async function getAuthenticatedUser() {
 
   if (error) {
     console.error("Supabase auth error:", error);
+
     throw new Error(
-      "Your session has expired. Please log in again."
+      error.message ||
+        "Unable to verify your authentication session."
     );
   }
 
@@ -86,19 +87,35 @@ async function getAuthenticatedUser() {
   return user;
 }
 
+// =========================================================
+// GENERATE UUID
+// =========================================================
+
 function generateUUID() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     try {
       return crypto.randomUUID();
     } catch {
-      // Fall back if not in secure context
+      // Fall back below
     }
   }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+    /[xy]/g,
+    (character) => {
+      const random = (Math.random() * 16) | 0;
+
+      const value =
+        character === "x"
+          ? random
+          : (random & 0x3) | 0x8;
+
+      return value.toString(16);
+    }
+  );
 }
 
 // =========================================================
@@ -121,7 +138,6 @@ export async function uploadNFTImage(file, userId) {
   }
 
   const fileName = `${generateUUID()}.${extension}`;
-
   const filePath = `${userId}/${fileName}`;
 
   const { error } = await supabase.storage
@@ -133,9 +149,18 @@ export async function uploadNFTImage(file, userId) {
     });
 
   if (error) {
-    console.error("Supabase storage upload error:", error);
+    console.error(
+      "Supabase storage upload error:",
+      error
+    );
+
+    // IMPORTANT:
+    // Do not hide the actual Supabase error.
     throw new Error(
-      "Image upload failed. Please check your connection and try again."
+      error.message ||
+        error.details ||
+        error.hint ||
+        "Image upload failed."
     );
   }
 
@@ -144,9 +169,16 @@ export async function uploadNFTImage(file, userId) {
     .getPublicUrl(filePath);
 
   if (!data?.publicUrl) {
-    await supabase.storage
-      .from(BUCKET_NAME)
-      .remove([filePath]);
+    try {
+      await supabase.storage
+        .from(BUCKET_NAME)
+        .remove([filePath]);
+    } catch (cleanupError) {
+      console.error(
+        "Failed to remove uploaded image:",
+        cleanupError
+      );
+    }
 
     throw new Error(
       "Unable to generate the NFT image URL."
@@ -170,7 +202,6 @@ export async function deleteNFTImage(filePath) {
 
   const authUser = await getAuthenticatedUser();
 
-  // Make sure the file belongs to the authenticated user.
   if (!filePath.startsWith(`${authUser.id}/`)) {
     throw new Error(
       "You are not authorized to delete this image."
@@ -182,7 +213,17 @@ export async function deleteNFTImage(filePath) {
     .remove([filePath]);
 
   if (error) {
-    throw error;
+    console.error(
+      "Supabase storage delete error:",
+      error
+    );
+
+    throw new Error(
+      error.message ||
+        error.details ||
+        error.hint ||
+        "Unable to delete NFT image."
+    );
   }
 
   return true;
@@ -255,9 +296,16 @@ export async function createNFT({
     .single();
 
   if (error) {
-    console.error("Supabase NFT creation error:", error);
+    console.error(
+      "Supabase NFT creation error:",
+      error
+    );
+
     throw new Error(
-      "Unable to create NFT record in database. " + (error?.details || error?.message || "")
+      error.message ||
+        error.details ||
+        error.hint ||
+        "Unable to create NFT record in database."
     );
   }
 
@@ -323,7 +371,7 @@ export async function deleteNFT(nft) {
   }
 
   // ---------------------------------------------------------
-  // Delete database record
+  // DELETE DATABASE RECORD
   // ---------------------------------------------------------
 
   const { error } = await supabase
@@ -333,11 +381,21 @@ export async function deleteNFT(nft) {
     .eq("creator_id", authUser.id);
 
   if (error) {
-    throw error;
+    console.error(
+      "Supabase NFT delete error:",
+      error
+    );
+
+    throw new Error(
+      error.message ||
+        error.details ||
+        error.hint ||
+        "Unable to delete NFT."
+    );
   }
 
   // ---------------------------------------------------------
-  // Delete image from Storage
+  // DELETE IMAGE FROM STORAGE
   // ---------------------------------------------------------
 
   const filePath = getStoragePathFromUrl(
@@ -348,9 +406,8 @@ export async function deleteNFT(nft) {
     try {
       await deleteNFTImage(filePath);
     } catch (storageError) {
-      // The NFT is already deleted from the database.
-      // Log the storage problem instead of making the
-      // user think the NFT deletion failed.
+      // Database deletion already succeeded.
+      // Do not report the whole deletion as failed.
       console.error(
         "NFT image cleanup failed:",
         storageError
