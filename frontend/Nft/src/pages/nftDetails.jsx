@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, Loader2, ShoppingBag } from "lucide-react";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  ShoppingBag,
+} from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -8,80 +14,423 @@ import {
   fadeUp,
 } from "../components/motion";
 
+import { useWallet } from "../context/walletContext";
+
+import {
+  initNimiq,
+  fetchNimiqBalance,
+  sendNIMTransaction,
+} from "../lib/nimiq";
+
 import { supabase } from "../lib/supabase";
 
 function NFTDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const {
+    walletAddress,
+  } = useWallet();
+
   const [nft, setNft] = useState(null);
   const [listing, setListing] = useState(null);
-  const [loading, setLoading] = useState(true);
 
+  const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState(false);
+
   const [buyError, setBuyError] = useState("");
   const [buySuccess, setBuySuccess] = useState(false);
 
-  useEffect(() => {
-    const fetchNFT = async () => {
-      try {
-        setLoading(true);
+  // ================= FETCH NFT =================
 
-        const { data, error } = await supabase
-          .from("nfts")
-          .select(`
-            *,
-            profiles:creator_id (
-              id,
-              username,
-              display_name,
-              avatar_url
-            ),
-            marketplace_listings (
-              id,
-              price,
-              currency,
-              status,
-              seller_id
-            )
-          `)
-          .eq("id", id)
-          .single();
+  const fetchNFT = useCallback(async () => {
+    if (!id) return;
 
-        if (error) throw error;
+    try {
+      setLoading(true);
+      setBuyError("");
 
-        setNft(data);
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("nfts")
+        .select(`
+          *,
+          profiles:creator_id (
+            id,
+            username,
+            display_name,
+            avatar_url,
+            wallet_address
+          ),
+          marketplace_listings (
+            id,
+            price,
+            currency,
+            status,
+            seller_id
+          )
+        `)
+        .eq("id", id)
+        .single();
 
-        const activeListing = data.marketplace_listings?.find(
+      if (error) {
+        throw error;
+      }
+
+      setNft(data);
+
+      const activeListing =
+        data.marketplace_listings?.find(
           (item) => item.status === "active"
         );
 
-        setListing(activeListing || null);
-      } catch (error) {
-        console.error("Error loading NFT:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+      setListing(activeListing || null);
+    } catch (error) {
+      console.error(
+        "Error loading NFT:",
+        error
+      );
 
-    fetchNFT();
+      setNft(null);
+      setListing(null);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  useEffect(() => {
+    fetchNFT();
+  }, [fetchNFT]);
+
+  // ================= BUY NFT =================
+
+  const handleBuyNFT = async () => {
+    if (!listing || buying) return;
+
+    if (!walletAddress) {
+      setBuyError(
+        "Please connect your Nimiq wallet first."
+      );
+      return;
+    }
+
+    if (!nft) {
+      setBuyError(
+        "NFT information is unavailable."
+      );
+      return;
+    }
+
+    setBuying(true);
+    setBuyError("");
+    setBuySuccess(false);
+
+    try {
+      // ================= PRICE =================
+
+      const nftPrice = Number(listing.price);
+
+      if (!Number.isFinite(nftPrice) || nftPrice <= 0) {
+        throw new Error(
+          "This NFT has an invalid price."
+        );
+      }
+
+      const currency =
+        listing.currency || "NIM";
+
+      if (currency.toUpperCase() !== "NIM") {
+        throw new Error(
+          "This NFT can only be purchased with NIM."
+        );
+      }
+
+      // ================= SELLER =================
+
+      /*
+       * seller_id is the Supabase profile/user ID.
+       * We need the seller's wallet address for
+       * the actual Nimiq transaction.
+       */
+
+      const {
+        data: sellerProfile,
+        error: sellerError,
+      } = await supabase
+        .from("profiles")
+        .select("id, wallet_address")
+        .eq("id", listing.seller_id)
+        .single();
+
+      if (sellerError || !sellerProfile) {
+        throw new Error(
+          "Unable to find the seller."
+        );
+      }
+
+      const sellerWallet =
+        sellerProfile.wallet_address;
+
+      if (!sellerWallet) {
+        throw new Error(
+          "The seller does not have a Nimiq wallet connected."
+        );
+      }
+
+      // Prevent buying your own NFT.
+      if (
+        sellerWallet.replace(/\s+/g, "").toUpperCase() ===
+        walletAddress.replace(/\s+/g, "").toUpperCase()
+      ) {
+        throw new Error(
+          "You cannot purchase your own NFT."
+        );
+      }
+
+      // ================= BALANCE =================
+
+      const balance =
+        await fetchNimiqBalance(walletAddress);
+
+      if (balance < nftPrice) {
+        throw new Error(
+          `Insufficient NIM balance. You have ${balance.toFixed(
+            2
+          )} NIM, but need ${nftPrice.toFixed(2)} NIM.`
+        );
+      }
+
+      // ================= PROVIDER =================
+
+      const provider =
+        await initNimiq({
+          timeout: 10000,
+        });
+
+      if (!provider) {
+        throw new Error(
+          "Nimiq wallet provider is unavailable."
+        );
+      }
+
+      // ================= TRANSACTION =================
+
+      /*
+       * IMPORTANT:
+       * The recipient is the SELLER,
+       * not the buyer.
+       */
+
+      const txHash =
+        await sendNIMTransaction(provider, {
+          recipient: sellerWallet,
+          valueInNim: nftPrice,
+        });
+
+      if (!txHash) {
+        throw new Error(
+          "Transaction was not submitted."
+        );
+      }
+
+      // ================= CHECK LISTING =================
+
+      /*
+       * Give the transaction a moment to propagate.
+       * The listing is checked again before recording
+       * the sale.
+       */
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, 3000)
+      );
+
+      const {
+        data: refreshedListing,
+        error: refreshError,
+      } = await supabase
+        .from("marketplace_listings")
+        .select(
+          "id, price, currency, status, seller_id"
+        )
+        .eq("id", listing.id)
+        .single();
+
+      if (
+        refreshError ||
+        !refreshedListing
+      ) {
+        throw new Error(
+          "Transaction was submitted, but the listing could not be verified."
+        );
+      }
+
+      if (
+        refreshedListing.status !== "active"
+      ) {
+        throw new Error(
+          "This NFT has already been sold."
+        );
+      }
+
+      // ================= DUPLICATE TRANSACTION =================
+
+      const {
+        data: existingSale,
+        error: saleLookupError,
+      } = await supabase
+        .from("marketplace_sales")
+        .select("transaction_hash")
+        .eq(
+          "transaction_hash",
+          txHash
+        )
+        .maybeSingle();
+
+      if (saleLookupError) {
+        console.warn(
+          "Sale lookup error:",
+          saleLookupError
+        );
+      }
+
+      if (existingSale) {
+        throw new Error(
+          "This transaction has already been processed."
+        );
+      }
+
+      // ================= MARK LISTING SOLD =================
+
+      const {
+        data: updatedListing,
+        error: updateError,
+      } = await supabase
+        .from("marketplace_listings")
+        .update({
+          status: "sold",
+        })
+        .eq("id", listing.id)
+        .eq("status", "active")
+        .select()
+        .maybeSingle();
+
+      if (updateError) {
+        console.error(
+          "Failed to update listing:",
+          updateError
+        );
+
+        throw new Error(
+          "The NIM transaction was submitted, but the NFT could not be claimed."
+        );
+      }
+
+      if (!updatedListing) {
+        throw new Error(
+          "This NFT has already been purchased."
+        );
+      }
+
+      // ================= RECORD SALE =================
+
+      const {
+        error: saleError,
+      } = await supabase
+        .from("marketplace_sales")
+        .insert({
+          nft_id: nft.id,
+          listing_id: listing.id,
+          seller_id: listing.seller_id,
+          buyer_id: walletAddress,
+          price: listing.price,
+          currency: currency,
+          transaction_hash: txHash,
+          status: "completed",
+          created_at:
+            new Date().toISOString(),
+        });
+
+      if (saleError) {
+        console.error(
+          "Failed to record sale:",
+          saleError
+        );
+
+        /*
+         * We do NOT attempt to automatically reverse
+         * the NIM transaction. Blockchain transactions
+         * cannot simply be rolled back.
+         */
+
+        throw new Error(
+          "Payment was submitted, but the marketplace could not record the sale."
+        );
+      }
+
+      // ================= SUCCESS =================
+
+      setBuySuccess(true);
+      setListing(null);
+
+      await fetchNFT();
+    } catch (error) {
+      console.error(
+        "Buy NFT error:",
+        error
+      );
+
+      const message =
+        error?.message ||
+        "Failed to complete NFT purchase.";
+
+      const lowerMessage =
+        message.toLowerCase();
+
+      if (
+        lowerMessage.includes("reject") ||
+        lowerMessage.includes("cancel") ||
+        lowerMessage.includes("denied")
+      ) {
+        setBuyError(
+          "Transaction was rejected by the user."
+        );
+      } else {
+        setBuyError(message);
+      }
+    } finally {
+      setBuying(false);
+    }
+  };
+
+  // ================= LOADING =================
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0b0b12] text-white">
-        <Loader2 size={30} className="animate-spin text-purple-500" />
+        <Loader2
+          size={30}
+          className="animate-spin text-purple-500"
+        />
       </div>
     );
   }
 
+  // ================= NOT FOUND =================
+
   if (!nft) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-[#0b0b12] px-6 text-white">
-        <h1 className="text-2xl font-bold">NFT not found</h1>
+        <h1 className="text-2xl font-bold">
+          NFT not found
+        </h1>
 
         <MotionButton
-          onClick={() => navigate("/marketplace")}
+          onClick={() =>
+            navigate("/marketplace")
+          }
           className="mt-5 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold hover:bg-purple-700"
         >
           Back to Marketplace
@@ -90,25 +439,31 @@ function NFTDetails() {
     );
   }
 
+  // ================= CREATOR =================
+
   const creator =
     nft.profiles?.display_name ||
     nft.profiles?.username ||
     "Unknown creator";
 
+  // ================= RENDER =================
+
   return (
     <div className="min-h-screen bg-[#0b0b12] px-4 py-6 text-white sm:px-6">
 
-      {/* BACK BUTTON */}
+      {/* BACK */}
 
       <MotionButton
-        onClick={() => navigate("/marketplace")}
+        onClick={() =>
+          navigate("/marketplace")
+        }
         className="mb-8 flex items-center gap-2 text-sm text-gray-400 transition hover:text-white"
       >
         <ArrowLeft size={18} />
         Back to Marketplace
       </MotionButton>
 
-      {/* NFT DETAILS */}
+      {/* DETAILS */}
 
       <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-2">
 
@@ -118,11 +473,17 @@ function NFTDetails() {
           variants={fadeUp}
           className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
         >
-          <img
-            src={nft.image_url}
-            alt={nft.name}
-            className="aspect-square h-full w-full object-cover"
-          />
+          {nft.image_url ? (
+            <img
+              src={nft.image_url}
+              alt={nft.name}
+              className="aspect-square h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex aspect-square items-center justify-center text-gray-500">
+              No image available
+            </div>
+          )}
         </MotionDiv>
 
         {/* INFORMATION */}
@@ -131,13 +492,20 @@ function NFTDetails() {
           variants={fadeUp}
           className="flex flex-col justify-center"
         >
+          {/* CATEGORY */}
+
           <div className="mb-4 inline-flex w-fit rounded-lg bg-purple-600/10 px-3 py-1.5 text-xs font-medium text-purple-400">
-            {nft.category}
+            {nft.category ||
+              "Digital Collectible"}
           </div>
+
+          {/* NAME */}
 
           <h1 className="text-4xl font-bold tracking-tight">
             {nft.name}
           </h1>
+
+          {/* CREATOR */}
 
           <p className="mt-3 text-gray-400">
             Created by{" "}
@@ -154,31 +522,81 @@ function NFTDetails() {
             </h2>
 
             <p className="leading-7 text-gray-500">
-              {nft.description || "No description provided."}
+              {nft.description ||
+                "No description provided."}
             </p>
           </div>
 
           {/* PRICE */}
 
           <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-            <p className="text-sm text-gray-500">Current price</p>
+            <p className="text-sm text-gray-500">
+              Current price
+            </p>
 
             <p className="mt-2 text-2xl font-bold">
               {listing
-                ? `${listing.price} ${listing.currency}`
-                : `${nft.price} ${nft.currency}`}
+                ? `${listing.price} ${
+                    listing.currency || "NIM"
+                  }`
+                : `${nft.price} ${
+                    nft.currency || "NIM"
+                  }`}
             </p>
           </div>
+
+          {/* SUCCESS */}
+
+          {buySuccess && (
+            <div className="mt-6 flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-4 text-sm text-green-400">
+              <CheckCircle2
+                size={20}
+              />
+
+              <div>
+                <p className="font-semibold">
+                  NFT purchased successfully
+                </p>
+
+                <p className="mt-1 text-green-400/70">
+                  Your NIM transaction was submitted and the sale was recorded.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ERROR */}
+
+          {buyError && (
+            <div className="mt-6 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-4 text-sm text-red-400">
+              {buyError}
+            </div>
+          )}
 
           {/* BUY */}
 
           {listing ? (
             <MotionButton
               onClick={handleBuyNFT}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-4 font-semibold transition hover:bg-purple-700"
+              disabled={buying}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-4 font-semibold transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <ShoppingBag size={19} />
-              Buy NFT
+              {buying ? (
+                <>
+                  <Loader2
+                    size={19}
+                    className="animate-spin"
+                  />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <ShoppingBag
+                    size={19}
+                  />
+                  Buy NFT
+                </>
+              )}
             </MotionButton>
           ) : (
             <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 text-center text-sm text-gray-500">
@@ -189,165 +607,6 @@ function NFTDetails() {
       </div>
     </div>
   );
-
-  // ==========================================
-  // BUY NFT
-  // ==========================================
-
-  const handleBuyNFT = async () => {
-    if (!listing || buying) return;
-
-    const {
-      walletAddress: connectedWalletAddress,
-      user: walletUser,
-    } = useWallet() || {};
-
-    if (!connectedWalletAddress) {
-      setBuyError("Please connect your Nimiq wallet first.");
-      return;
-    }
-
-    setBuying(true);
-    setBuyError("");
-
-    try {
-      // Get user's Nimiq balance
-      const balance = await fetchNimiqBalance(connectedWalletAddress);
-
-      // NFT price
-      const nftPrice = Number(listing.price);
-      const nftCurrency = listing.currency || "NIM";
-
-      // Total cost
-      const total = nftPrice;
-
-      // Check balance
-      if (balance < total) {
-        setBuyError(
-          `Insufficient NIM balance. You have ${balance.toFixed(2)} NIM, but need ${total.toFixed(2)} NIM.`
-        );
-        setBuying(false);
-        return;
-      }
-
-      // Initialize Nimiq provider
-      const provider = await initNimiq({ timeout: 10000 });
-
-      // Send NIM transaction to seller
-      const txHash = await sendNIMTransaction(provider, {
-        recipient: connectedWalletAddress,
-        valueInNim: total,
-      });
-
-      // Wait for transaction confirmation
-      // In a real implementation, we would poll the Nimiq network for confirmation
-      // For now, we'll wait and then verify at the database level
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      // Verify the listing is still active before claiming it
-      // This provides double-purchase protection at the database level
-      const { data: refreshedListing, error: refreshError } = await supabase
-        .from("marketplace_listings")
-        .select("status, id, price, currency, seller_id")
-        .eq("id", listing.id)
-        .single();
-
-      if (refreshError || !refreshedListing || refreshedListing.status !== "active") {
-        setBuyError("This NFT has already been sold or is no longer available.");
-        setBuying(false);
-        return;
-      }
-
-      // Check if this transaction has already been processed (double spend protection)
-      const { data: existingSale } = await supabase
-        .from("marketplace_sales")
-        .select("transaction_hash")
-        .eq("transaction_hash", txHash)
-        .maybeSingle();
-
-      if (existingSale) {
-        setBuyError("This transaction has already been processed. The NFT may have already been purchased.");
-        setBuying(false);
-        return;
-      }
-
-      // Mark listing as sold using Supabase with active status check (atomic)
-      const { error: updateError } = await supabase
-        .from("marketplace_listings")
-        .update({ status: "sold" })
-        .eq("id", listing.id)
-        .eq("status", "active"); // Critical: only update if still active
-
-      if (updateError) {
-        console.error("Failed to update listing status:", updateError);
-        setBuyError("Failed to claim NFT. Please try again.");
-        setBuying(false);
-        return;
-      }
-
-      // Create sale transaction record in Supabase
-      const { error: saleError } = await supabase
-        .from("marketplace_sales")
-        .insert({
-          nft_id: nft.id,
-          listing_id: listing.id,
-          seller_id: listing.seller_id,
-          buyer_id: connectedWalletAddress,
-          price: listing.price,
-          currency: listing.currency || "NIM",
-          transaction_hash: txHash,
-          status: "completed",
-          created_at: new Date().toISOString(),
-        });
-
-      if (saleError) {
-        // Roll back the listing status if sale record creation failed
-        await supabase
-          .from("marketplace_listings")
-          .update({ status: "active" })
-          .eq("id", listing.id);
-        console.error("Failed to create sale record:", saleError);
-        setBuyError("Transaction submitted but failed to record sale. Please contact support.");
-        setBuying(false);
-        return;
-      }
-
-      // Update NFT ownership - transfer to buyer
-      // This assumes the nfts table has an owner_id or similar field
-      // For now, we'll just record the sale and update the UI
-      // In a full implementation, you would update the NFT's owner field
-
-      // Show success state
-      setBuySuccess(true);
-
-      // Reset after a moment
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      setBuySuccess(false);
-      setBuying(false);
-
-      // Refresh the NFT data to reflect the new state
-      await fetchNFT();
-    } catch (err) {
-      console.error("Buy NFT error:", err);
-      const message = err?.message || "Failed to complete NFT purchase."
-
-      if (
-        message.includes("reject") ||
-        message.includes("cancel") ||
-        message.includes("denied")
-      ) {
-        setBuyError("Transaction was rejected by the user.");
-      } else if (message.includes("insufficient")) {
-        setBuyError(`Insufficient NIM balance. ${message}`);
-      } else if (message.includes("already")) {
-        setBuyError(message);
-      } else {
-        setBuyError(message);
-      }
-
-      setBuying(false);
-    }
-  };
 }
 
 export default NFTDetails;
