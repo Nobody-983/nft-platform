@@ -37,7 +37,7 @@ export async function loginWithWallet(walletAddress) {
     password,
   } = getCredentialsForWallet(normalizedAddress);
 
-  // Try to sign in to the existing marketplace account.
+  // Try to sign in to the wallet's Supabase account.
   let {
     data: { user },
     error: signInError,
@@ -46,7 +46,7 @@ export async function loginWithWallet(walletAddress) {
     password,
   });
 
-  // Create the marketplace account if it doesn't exist.
+  // Create the account if it doesn't exist.
   if (signInError || !user) {
     const {
       data: signUpData,
@@ -70,8 +70,6 @@ export async function loginWithWallet(walletAddress) {
 
     user = signUpData.user;
 
-    // If signup did not create a session,
-    // try signing in immediately.
     if (!signUpData.session) {
       const {
         data: retryData,
@@ -124,7 +122,7 @@ export async function loginWithWallet(walletAddress) {
         existingProfile.wallet_address
       );
 
-    // Same wallet.
+    // The profile already belongs to this wallet.
     if (existingWallet === normalizedAddress) {
       return {
         user,
@@ -132,10 +130,36 @@ export async function loginWithWallet(walletAddress) {
       };
     }
 
-    // Different wallet.
-    throw new Error(
-      "This marketplace account is already linked to a different Nimiq wallet."
-    );
+    /*
+     * The Supabase account exists, but its stored wallet
+     * address is different.
+     *
+     * The connected Nimiq wallet is the source of truth,
+     * so update the profile to the currently connected wallet.
+     */
+    const {
+      data: updatedProfile,
+      error: updateError,
+    } = await supabase
+      .from("profiles")
+      .update({
+        wallet_address: normalizedAddress,
+      })
+      .eq("id", user.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw new Error(
+        updateError.message ||
+          "Unable to update the wallet linked to this marketplace account."
+      );
+    }
+
+    return {
+      user,
+      profile: updatedProfile,
+    };
   }
 
   // ================= CREATE PROFILE =================
