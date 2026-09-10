@@ -1,17 +1,11 @@
-
 import { useState } from "react";
 import { Wallet, Loader2, ShieldCheck } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 import { useWallet } from "../context/walletContext";
 
 function Auth() {
-  const navigate = useNavigate();
-
   const {
     connectWallet,
-    isConnected,
-    walletAddress,
     loading,
   } = useWallet();
 
@@ -21,26 +15,24 @@ function Auth() {
     setError("");
 
     try {
-      const address = await connectWallet();
-
-      if (!address) {
-        throw new Error(
-          "No Nimiq wallet account was selected."
-        );
-      }
-
-      navigate("/dashboard");
+      await connectWallet();
     } catch (err) {
-      console.error("Wallet connection error:", err);
+      console.error(
+        "Wallet connection error:",
+        err
+      );
 
-      const message = err?.message?.toLowerCase() || "";
+      const message =
+        err?.message?.toLowerCase() || "";
 
       if (
         message.includes("denied") ||
         message.includes("reject") ||
         message.includes("cancel")
       ) {
-        setError("Wallet connection was cancelled.");
+        setError(
+          "Wallet connection was cancelled."
+        );
       } else {
         setError(
           err?.message ||
@@ -51,12 +43,13 @@ function Auth() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0b12] text-white flex items-center justify-center px-6">
+    <div className="flex min-h-screen items-center justify-center bg-[#0b0b12] px-6 text-white">
       <div className="w-full max-w-md">
 
         {/* Logo */}
-        <div className="text-center mb-10">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#1a1a25] border border-white/10">
+
+        <div className="mb-10 text-center">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-[#1a1a25]">
             <Wallet size={30} />
           </div>
 
@@ -70,60 +63,40 @@ function Auth() {
         </div>
 
         {/* Auth Card */}
+
         <div className="rounded-3xl border border-white/10 bg-[#11111a] p-6 shadow-2xl">
 
-          {/* Connected wallet */}
-          {isConnected && walletAddress ? (
-            <div className="space-y-4">
-
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-xs text-white/40 mb-2">
-                  Connected wallet
-                </p>
-
-                <p className="text-sm font-medium break-all">
-                  {walletAddress}
-                </p>
-              </div>
-
-              <button
-                onClick={() => navigate("/dashboard")}
-                className="w-full h-14 rounded-2xl bg-white text-black font-semibold flex items-center justify-center gap-3 transition hover:bg-white/90"
-              >
-                Continue to Dashboard
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleConnect}
-              disabled={loading}
-              className="w-full h-14 rounded-2xl bg-white text-black font-semibold flex items-center justify-center gap-3 transition hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <Loader2
-                    size={20}
-                    className="animate-spin"
-                  />
-                  Connecting...
-                </>
-              ) : (
-                <>
-                  <Wallet size={20} />
-                  Connect Nimiq Wallet
-                </>
-              )}
-            </button>
-          )}
+          <button
+            onClick={handleConnect}
+            disabled={loading}
+            className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-white font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <Loader2
+                  size={20}
+                  className="animate-spin"
+                />
+                Connecting...
+              </>
+            ) : (
+              <>
+                <Wallet size={20} />
+                Connect Nimiq Wallet
+              </>
+            )}
+          </button>
 
           {/* Error */}
+
           {error && (
             <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
               {error}
             </div>
           )}
 
-          {/* Security information */}
+          {/* Security */}
+
           <div className="mt-6 flex items-start gap-3 rounded-2xl bg-white/[0.03] p-4">
             <ShieldCheck
               size={20}
@@ -136,15 +109,16 @@ function Auth() {
               </p>
 
               <p className="mt-1 text-xs leading-5 text-white/40">
-                Your private keys never leave your Nimiq
-                wallet. Wallet actions are approved directly
-                through Nimiq.
+                Your private keys never leave your
+                Nimiq wallet. Wallet actions are
+                approved directly through Nimiq.
               </p>
             </div>
           </div>
         </div>
 
         {/* Footer */}
+
         <p className="mt-6 text-center text-xs text-white/30">
           New here? Connecting your wallet automatically
           creates your account.
@@ -155,3 +129,4 @@ function Auth() {
 }
 
 export default Auth;
+
