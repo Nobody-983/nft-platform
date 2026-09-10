@@ -1,3 +1,4 @@
+
 import {
   createContext,
   useContext,
@@ -26,7 +27,7 @@ export function WalletProvider({ children }) {
   const [walletAddress, setWalletAddress] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(true); // eslint-disable-line no-unused-vars
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -81,39 +82,54 @@ export function WalletProvider({ children }) {
     async function restoreSession() {
       try {
         setIsInitializing(true);
+
         const savedAddress = localStorage.getItem("nimiq_wallet");
+
         const {
           session,
           user: existingUser,
           profile: existingProfile,
         } = await getCurrentSession();
 
-        if (mounted && savedAddress) {
+        if (!mounted) return;
+
+        // Restore wallet connection
+        if (savedAddress) {
           setWalletAddress(savedAddress);
           setIsConnected(true);
+
           await refreshBalance(savedAddress);
         }
 
-        if (mounted && session && existingUser) {
+        // Restore authenticated marketplace session
+        if (session && existingUser) {
           setUser(existingUser);
           setProfile(existingProfile);
 
           const profileAddress = existingProfile?.wallet_address;
+
           if (!savedAddress && profileAddress) {
             setWalletAddress(profileAddress);
             setIsConnected(true);
+
             localStorage.setItem("nimiq_wallet", profileAddress);
+
             await refreshBalance(profileAddress);
           }
         }
 
-        // A prior wallet selection is enough to retry account provisioning on
-        // reload. This restores the Supabase session for every route without
-        // asking Nimiq Pay for the same account again.
-        if (mounted && savedAddress && (!existingUser || !existingProfile)) {
+        // If wallet exists but the marketplace session/profile is missing,
+        // attempt to restore the marketplace account.
+        if (
+          mounted &&
+          savedAddress &&
+          (!existingUser || !existingProfile)
+        ) {
           try {
-            const { user: restoredUser, profile: restoredProfile } =
-              await loginWithWallet(savedAddress);
+            const {
+              user: restoredUser,
+              profile: restoredProfile,
+            } = await loginWithWallet(savedAddress);
 
             if (mounted) {
               setUser(restoredUser);
@@ -121,7 +137,11 @@ export function WalletProvider({ children }) {
               setError(null);
             }
           } catch (restoreError) {
-            console.error("Marketplace session restore error:", restoreError);
+            console.error(
+              "Marketplace session restore error:",
+              restoreError
+            );
+
             if (mounted) {
               setError(
                 restoreError.message ||
@@ -142,7 +162,7 @@ export function WalletProvider({ children }) {
             await refreshNetwork(provider);
           }
         } catch {
-          // Normal outside Nimiq Pay
+          // Expected when the app is opened outside Nimiq Pay.
         }
       } catch (err) {
         console.warn("Session restore error:", err);
@@ -174,46 +194,55 @@ export function WalletProvider({ children }) {
         nimiq || (await initNimiq({ timeout: 10000 }));
 
       if (!provider) {
-        throw new Error("Nimiq wallet provider could not be initialized.");
+        throw new Error(
+          "Nimiq wallet provider could not be initialized."
+        );
       }
 
       if (!nimiq) {
         setNimiq(provider);
       }
 
-      // 2. Ask Nimiq Pay for the user's selected account. This is the
-      // user-approved wallet connection request in the Mini App SDK.
+      // 2. Request the selected Nimiq account
       const accounts = await provider.listAccounts();
 
       if (!Array.isArray(accounts)) {
         throw new Error(
-          accounts?.error?.message || "Nimiq Pay could not provide an account."
+          accounts?.error?.message ||
+            "Nimiq Pay could not provide an account."
         );
       }
 
       const address = accounts[0]?.trim();
 
       if (!address) {
-        throw new Error("No Nimiq wallet account was selected.");
+        throw new Error(
+          "No Nimiq wallet account was selected."
+        );
       }
 
-      // A wallet is connected as soon as Nimiq Pay returns an account.
-      // Profile provisioning is intentionally not part of this wallet approval
-      // flow: a backend/profile error must not disconnect a valid wallet.
+      // Wallet connection is successful at this point.
       setWalletAddress(address);
       setIsConnected(true);
+
       localStorage.setItem("nimiq_wallet", address);
 
       let profileProvisioningError = null;
 
       try {
-        const { user: authUser, profile: authProfile } = await loginWithWallet(address);
+        const {
+          user: authUser,
+          profile: authProfile,
+        } = await loginWithWallet(address);
+
         setUser(authUser);
         setProfile(authProfile);
       } catch (profileError) {
-        // Nimiq Pay has already confirmed the wallet. Keep that connection
-        // intact and report profile provisioning separately to the caller.
-        console.error("Marketplace account provisioning error:", profileError);
+        console.error(
+          "Marketplace account provisioning error:",
+          profileError
+        );
+
         profileProvisioningError = profileError;
       }
 
@@ -226,35 +255,45 @@ export function WalletProvider({ children }) {
           profileProvisioningError.message ||
             "Wallet connected, but the marketplace account could not be created."
         );
+
         provisioningError.walletConnected = true;
+
         throw provisioningError;
       }
 
       return address;
     } catch (err) {
-      console.error("Nimiq wallet connection error:", err);
+      console.error(
+        "Nimiq wallet connection error:",
+        err
+      );
 
-      const message = err?.message?.toLowerCase() || "";
+      const message =
+        err?.message?.toLowerCase() || "";
 
       let userFriendlyError =
-        err?.message || "Failed to connect Nimiq wallet.";
+        err?.message ||
+        "Failed to connect Nimiq wallet.";
 
       if (
         message.includes("reject") ||
         message.includes("cancel") ||
         message.includes("denied")
       ) {
-        userFriendlyError = "Wallet connection was cancelled.";
+        userFriendlyError =
+          "Wallet connection was cancelled.";
       }
 
       setError(userFriendlyError);
 
+      // Only clear the wallet if the wallet itself was not
+      // successfully connected.
       if (!err?.walletConnected) {
-        // A provider/account-selection failure means no wallet connected.
         setWalletAddress(null);
         setIsConnected(false);
         setUser(null);
         setProfile(null);
+        localStorage.removeItem("nimiq_wallet");
       }
 
       throw new Error(userFriendlyError, {
@@ -277,7 +316,10 @@ export function WalletProvider({ children }) {
     try {
       nimiq?.disconnect();
     } catch (err) {
-      console.warn("Nimiq provider disconnect error:", err);
+      console.warn(
+        "Nimiq provider disconnect error:",
+        err
+      );
     }
 
     try {
@@ -285,6 +327,8 @@ export function WalletProvider({ children }) {
     } catch (err) {
       console.warn("Logout error:", err);
     }
+
+    localStorage.removeItem("nimiq_wallet");
 
     setWalletAddress(null);
     setIsConnected(false);
@@ -301,6 +345,7 @@ export function WalletProvider({ children }) {
     walletAddress,
     isConnected,
     loading,
+    isInitializing,
     error,
     user,
     profile,
