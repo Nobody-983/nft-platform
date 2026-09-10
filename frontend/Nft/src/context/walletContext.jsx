@@ -38,41 +38,35 @@ export function WalletProvider({ children }) {
 
   // ================= FETCH BALANCE =================
 
-  const refreshBalance = useCallback(
-    async (targetAddress = walletAddress) => {
-      if (!targetAddress) return;
+  const refreshBalance = useCallback(async (targetAddress) => {
+    if (!targetAddress) return;
 
-      try {
-        const bal = await fetchNimiqBalance(targetAddress);
-        setBalance(bal);
-      } catch (err) {
-        console.warn("Error refreshing balance:", err);
-      }
-    },
-    [walletAddress]
-  );
+    try {
+      const bal = await fetchNimiqBalance(targetAddress);
+      setBalance(bal);
+    } catch (err) {
+      console.warn("Error refreshing balance:", err);
+    }
+  }, []);
 
   // ================= FETCH NETWORK =================
 
-  const refreshNetwork = useCallback(
-    async (provider = nimiq) => {
-      if (!provider) return;
+  const refreshNetwork = useCallback(async (provider) => {
+    if (!provider) return;
 
-      try {
-        const isCons = await getConsensusStatus(provider);
-        setConsensus(Boolean(isCons));
+    try {
+      const isCons = await getConsensusStatus(provider);
+      setConsensus(Boolean(isCons));
 
-        const height = await getBlockHeight(provider);
+      const height = await getBlockHeight(provider);
 
-        if (height !== null) {
-          setBlockNumber(height);
-        }
-      } catch (err) {
-        console.warn("Error refreshing network status:", err);
+      if (height !== null) {
+        setBlockNumber(height);
       }
-    },
-    [nimiq]
-  );
+    } catch (err) {
+      console.warn("Error refreshing network status:", err);
+    }
+  }, []);
 
   // ================= RESTORE SESSION =================
 
@@ -83,8 +77,10 @@ export function WalletProvider({ children }) {
       try {
         setIsInitializing(true);
 
-        const savedAddress = localStorage.getItem("nimiq_wallet");
+        const savedAddress =
+          localStorage.getItem("nimiq_wallet");
 
+        // Restore Supabase session first.
         const {
           session,
           user: existingUser,
@@ -93,7 +89,7 @@ export function WalletProvider({ children }) {
 
         if (!mounted) return;
 
-        // Restore wallet connection
+        // Restore wallet address from local storage.
         if (savedAddress) {
           setWalletAddress(savedAddress);
           setIsConnected(true);
@@ -101,25 +97,31 @@ export function WalletProvider({ children }) {
           await refreshBalance(savedAddress);
         }
 
-        // Restore authenticated marketplace session
+        // Restore existing marketplace session.
         if (session && existingUser) {
           setUser(existingUser);
           setProfile(existingProfile);
 
-          const profileAddress = existingProfile?.wallet_address;
+          const profileAddress =
+            existingProfile?.wallet_address;
 
+          // If local storage doesn't have the wallet,
+          // recover it from the marketplace profile.
           if (!savedAddress && profileAddress) {
             setWalletAddress(profileAddress);
             setIsConnected(true);
 
-            localStorage.setItem("nimiq_wallet", profileAddress);
+            localStorage.setItem(
+              "nimiq_wallet",
+              profileAddress
+            );
 
             await refreshBalance(profileAddress);
           }
         }
 
-        // If wallet exists but the marketplace session/profile is missing,
-        // attempt to restore the marketplace account.
+        // If a wallet exists but Supabase session/profile
+        // is missing, recreate/restore the marketplace account.
         if (
           mounted &&
           savedAddress &&
@@ -151,7 +153,7 @@ export function WalletProvider({ children }) {
           }
         }
 
-        // Initialize Nimiq provider when available
+        // Initialize Nimiq provider.
         try {
           const provider = await initNimiq({
             timeout: 4000,
@@ -159,13 +161,17 @@ export function WalletProvider({ children }) {
 
           if (mounted && provider) {
             setNimiq(provider);
+
             await refreshNetwork(provider);
           }
         } catch {
-          // Expected when the app is opened outside Nimiq Pay.
+          // Expected when opened outside Nimiq Pay.
         }
       } catch (err) {
-        console.warn("Session restore error:", err);
+        console.warn(
+          "Session restore error:",
+          err
+        );
       } finally {
         if (mounted) {
           setIsInitializing(false);
@@ -189,9 +195,12 @@ export function WalletProvider({ children }) {
     setError(null);
 
     try {
-      // 1. Initialize Nimiq
+      // 1. Initialize Nimiq provider.
       const provider =
-        nimiq || (await initNimiq({ timeout: 10000 }));
+        nimiq ||
+        (await initNimiq({
+          timeout: 10000,
+        }));
 
       if (!provider) {
         throw new Error(
@@ -203,8 +212,9 @@ export function WalletProvider({ children }) {
         setNimiq(provider);
       }
 
-      // 2. Request the selected Nimiq account
-      const accounts = await provider.listAccounts();
+      // 2. Get selected Nimiq account.
+      const accounts =
+        await provider.listAccounts();
 
       if (!Array.isArray(accounts)) {
         throw new Error(
@@ -221,14 +231,18 @@ export function WalletProvider({ children }) {
         );
       }
 
-      // Wallet connection is successful at this point.
+      // Wallet connection succeeded.
       setWalletAddress(address);
       setIsConnected(true);
 
-      localStorage.setItem("nimiq_wallet", address);
+      localStorage.setItem(
+        "nimiq_wallet",
+        address
+      );
 
       let profileProvisioningError = null;
 
+      // 3. Create/restore marketplace account.
       try {
         const {
           user: authUser,
@@ -243,20 +257,23 @@ export function WalletProvider({ children }) {
           profileError
         );
 
-        profileProvisioningError = profileError;
+        profileProvisioningError =
+          profileError;
       }
 
-      // 3. Refresh wallet information
+      // 4. Refresh wallet information.
       await refreshBalance(address);
       await refreshNetwork(provider);
 
       if (profileProvisioningError) {
-        const provisioningError = new Error(
-          profileProvisioningError.message ||
-            "Wallet connected, but the marketplace account could not be created."
-        );
+        const provisioningError =
+          new Error(
+            profileProvisioningError.message ||
+              "Wallet connected, but the marketplace account could not be created."
+          );
 
-        provisioningError.walletConnected = true;
+        provisioningError.walletConnected =
+          true;
 
         throw provisioningError;
       }
@@ -286,19 +303,25 @@ export function WalletProvider({ children }) {
 
       setError(userFriendlyError);
 
-      // Only clear the wallet if the wallet itself was not
-      // successfully connected.
+      // Only clear the wallet if the wallet itself
+      // did not successfully connect.
       if (!err?.walletConnected) {
         setWalletAddress(null);
         setIsConnected(false);
         setUser(null);
         setProfile(null);
-        localStorage.removeItem("nimiq_wallet");
+
+        localStorage.removeItem(
+          "nimiq_wallet"
+        );
       }
 
-      throw new Error(userFriendlyError, {
-        cause: err,
-      });
+      throw new Error(
+        userFriendlyError,
+        {
+          cause: err,
+        }
+      );
     } finally {
       setLoading(false);
     }
@@ -325,16 +348,23 @@ export function WalletProvider({ children }) {
     try {
       await logoutUser();
     } catch (err) {
-      console.warn("Logout error:", err);
+      console.warn(
+        "Logout error:",
+        err
+      );
     }
 
-    localStorage.removeItem("nimiq_wallet");
+    localStorage.removeItem(
+      "nimiq_wallet"
+    );
 
     setWalletAddress(null);
     setIsConnected(false);
     setUser(null);
     setProfile(null);
     setBalance(0);
+    setConsensus(false);
+    setBlockNumber(null);
     setError(null);
   };
 
