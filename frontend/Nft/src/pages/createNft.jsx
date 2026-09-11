@@ -73,7 +73,9 @@ function CreateNFT() {
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState("");
 
+  // NFTs currently owned by the user
   const [nfts, setNfts] = useState([]);
+
   const [listings, setListings] = useState([]);
 
   const [loading, setLoading] = useState(false);
@@ -95,7 +97,7 @@ function CreateNFT() {
   const [success, setSuccess] = useState("");
 
   // =========================================================
-  // FETCH USER NFTS
+  // FETCH OWNED NFTS
   // =========================================================
 
   const fetchNFTs = async () => {
@@ -109,10 +111,26 @@ function CreateNFT() {
 
     try {
       const { data, error: fetchError } = await supabase
-        .from("nfts")
-        .select("*")
-        .eq("creator_id", user.id)
-        .order("created_at", {
+        .from("nft_ownership")
+        .select(`
+          nft_id,
+          acquired_at,
+          updated_at,
+          nfts (
+            id,
+            creator_id,
+            name,
+            description,
+            image_url,
+            category,
+            price,
+            currency,
+            created_at,
+            updated_at
+          )
+        `)
+        .eq("owner_id", user.id)
+        .order("acquired_at", {
           ascending: false,
         });
 
@@ -120,9 +138,16 @@ function CreateNFT() {
         throw fetchError;
       }
 
-      setNfts(data || []);
+      // Supabase returns the NFT inside the `nfts` relation.
+      // Flatten it so the rest of the component can continue
+      // using nft.id, nft.name, nft.image_url, etc.
+      const ownedNFTs = (data || [])
+        .map((ownership) => ownership.nfts)
+        .filter(Boolean);
+
+      setNfts(ownedNFTs);
     } catch (err) {
-      console.error("Error fetching NFTs:", err);
+      console.error("Error fetching owned NFTs:", err);
       setError("Unable to load your NFTs.");
     } finally {
       setLoadingNFTs(false);
@@ -154,7 +179,7 @@ function CreateNFT() {
   useEffect(() => {
     fetchNFTs();
     fetchListings();
-  }, []);
+  }, [user?.id]);
 
   // =========================================================
   // FIND ACTIVE LISTING
@@ -286,14 +311,10 @@ function CreateNFT() {
     setError("");
     setSuccess("");
 
-    // AUTH CHECK
-
     if (!user?.id) {
       setError("You must be logged in to create an NFT.");
       return;
     }
-
-    // NAME
 
     const trimmedName = form.name.trim();
 
@@ -307,18 +328,12 @@ function CreateNFT() {
       return;
     }
 
-    // DESCRIPTION
-
     const trimmedDescription = form.description.trim();
 
     if (trimmedDescription.length > 1000) {
-      setError(
-        "Description must be 1000 characters or less."
-      );
+      setError("Description must be 1000 characters or less.");
       return;
     }
-
-    // IMAGE
 
     if (!image) {
       setError("Please select an image.");
@@ -332,8 +347,6 @@ function CreateNFT() {
       return;
     }
 
-    // PRICE
-
     const numericPrice = Number(form.price);
 
     if (
@@ -345,15 +358,11 @@ function CreateNFT() {
       return;
     }
 
-    // UPLOAD + CREATE
-
     let uploadedImage = null;
 
     try {
       setLoading(true);
       setUploading(true);
-
-      // Upload image
 
       uploadedImage = await uploadNFTImage(
         image,
@@ -367,8 +376,6 @@ function CreateNFT() {
       }
 
       setUploading(false);
-
-      // Create NFT database record
 
       const newNFT = await createNFT({
         creator_id: user.id,
@@ -384,14 +391,10 @@ function CreateNFT() {
         throw new Error("NFT could not be created.");
       }
 
-      // Update UI
-
       setNfts((currentNFTs) => [
         newNFT,
         ...currentNFTs,
       ]);
-
-      // Reset form
 
       setForm({
         name: "",
@@ -406,8 +409,6 @@ function CreateNFT() {
       setSuccess("NFT created successfully.");
     } catch (err) {
       console.error("NFT creation error:", err);
-
-      // Clean up uploaded image if NFT creation failed
 
       if (uploadedImage?.filePath) {
         try {
@@ -958,7 +959,7 @@ function CreateNFT() {
             <p className="mt-1 text-sm text-gray-500">
               {nfts.length}{" "}
               {nfts.length === 1 ? "NFT" : "NFTs"}{" "}
-              created
+              owned
             </p>
           </div>
 
@@ -1127,7 +1128,7 @@ function CreateNFT() {
             </p>
 
             <p className="mt-2 text-sm text-gray-500">
-              Create your first NFT using the form above.
+              Create or acquire your first NFT.
             </p>
           </div>
         )}
@@ -1166,8 +1167,6 @@ function CreateNFT() {
               onSubmit={handleListNFT}
               className="space-y-5"
             >
-              {/* SALE PRICE */}
-
               <div>
                 <label className="mb-2 block text-sm font-medium">
                   Sale Price
@@ -1191,8 +1190,6 @@ function CreateNFT() {
                   className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-purple-500 disabled:opacity-60"
                 />
               </div>
-
-              {/* CURRENCY */}
 
               <div>
                 <label className="mb-2 block text-sm font-medium">
@@ -1221,8 +1218,6 @@ function CreateNFT() {
                   </option>
                 </select>
               </div>
-
-              {/* BUTTONS */}
 
               <div className="flex gap-3 pt-2">
                 <button

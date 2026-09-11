@@ -32,7 +32,7 @@ const navigation = [
     icon: Gamepad,
   },
   {
-    name: "Create NFT",
+    name: "My NFT",
     path: "/create-nft",
     icon: ImagePlus,
   },
