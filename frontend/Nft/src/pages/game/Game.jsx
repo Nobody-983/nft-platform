@@ -1,5 +1,9 @@
-import { useState } from "react";
+
+import { useCallback, useEffect, useState } from "react";
 import { Sun, Zap, Loader2 } from "lucide-react";
+
+import { useWallet } from "../../context/walletContext";
+import { supabase } from "../../lib/supabase";
 
 const MILESTONE_LEVELS = [
   {
@@ -20,47 +24,234 @@ const MILESTONE_LEVELS = [
 ];
 
 function Game() {
-  const [tapCount, setTapCount] = useState(1200);
-  const [claimedRewards, setClaimedRewards] = useState([1]);
+  const { user } = useWallet();
+
+  const [tapCount, setTapCount] = useState(0);
+  const [claimedRewards, setClaimedRewards] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
+
+  const [isLoading, setIsLoading] = useState(true);
   const [isTapping, setIsTapping] = useState(false);
   const [claimingLevel, setClaimingLevel] = useState(null);
 
-  const leaderboard = [
-    {
-      id: 1,
-      username: "Nimiq Player",
-      tap_count: 8500,
-    },
-    {
-      id: 2,
-      username: "Crypto Tapper",
-      tap_count: 6200,
-    },
-    {
-      id: 3,
-      username: "Nimiq Hero",
-      tap_count: 4100,
-    },
-  ];
+  // ================= LOAD GAME DATA =================
 
-  const handleTap = () => {
-    if (isTapping) {
+  const loadGameData = useCallback(async () => {
+    if (!user?.id) {
+      setTapCount(0);
+      setClaimedRewards([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const [profileResult, rewardsResult] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("tap_count")
+          .eq("id", user.id)
+          .single(),
+
+        supabase
+          .from("reward_claims")
+          .select(`
+            id,
+            reward_level,
+            nft_id,
+            nfts (
+              id,
+              name,
+              description,
+              image_url,
+              category,
+              price,
+              currency
+            )
+          `)
+          .eq("user_id", user.id)
+          .order("reward_level", {
+            ascending: true,
+          }),
+      ]);
+
+      if (profileResult.error) {
+        throw profileResult.error;
+      }
+
+      if (rewardsResult.error) {
+        throw rewardsResult.error;
+      }
+
+      setTapCount(profileResult.data?.tap_count ?? 0);
+
+      setClaimedRewards(
+        (rewardsResult.data ?? []).map((reward) => ({
+          id: reward.id,
+          level: reward.reward_level,
+          nftId: reward.nft_id,
+          nft: reward.nfts ?? null,
+        }))
+      );
+    } catch (error) {
+      console.error("FAILED TO LOAD GAME DATA:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id]);
+
+  // ================= LOAD LEADERBOARD =================
+
+  const loadLeaderboard = useCallback(async () => {
+    if (!user?.id) {
+      setLeaderboard([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(
+          "id, username, display_name, avatar_url, tap_count"
+        )
+        .order("tap_count", {
+          ascending: false,
+        })
+        .limit(10);
+
+      if (error) {
+        throw error;
+      }
+
+      let players = data ?? [];
+
+      // Make sure the current user is visible even
+      // when they are outside the top 10.
+      const currentUserIsIncluded = players.some(
+        (player) => player.id === user.id
+      );
+
+      if (!currentUserIsIncluded) {
+        const { data: currentUser, error: currentUserError } =
+          await supabase
+            .from("profiles")
+            .select(
+              "id, username, display_name, avatar_url, tap_count"
+            )
+            .eq("id", user.id)
+            .maybeSingle();
+
+        if (currentUserError) {
+          throw currentUserError;
+        }
+
+        if (currentUser) {
+          players = [...players, currentUser];
+        }
+      }
+
+      // Calculate the actual rank based on all players.
+      const { data: allProfiles, error: rankError } =
+        await supabase
+          .from("profiles")
+          .select("id, tap_count")
+          .order("tap_count", {
+            ascending: false,
+          });
+
+      if (rankError) {
+        throw rankError;
+      }
+
+      const rankedPlayers = allProfiles ?? [];
+
+      players = players.map((player) => {
+        const rank =
+          rankedPlayers.findIndex(
+            (rankedPlayer) => rankedPlayer.id === player.id
+          ) + 1;
+
+        return {
+          ...player,
+          rank,
+        };
+      });
+
+      setLeaderboard(players);
+    } catch (error) {
+      console.error(
+        "FAILED TO LOAD LEADERBOARD:",
+        error
+      );
+    }
+  }, [user?.id]);
+
+  // ================= INITIAL LOAD =================
+
+  useEffect(() => {
+    loadGameData();
+    loadLeaderboard();
+  }, [loadGameData, loadLeaderboard]);
+
+  // ================= TAP =================
+
+  const handleTap = async () => {
+    if (!user?.id || isTapping) {
       return;
     }
 
     setIsTapping(true);
 
-    setTimeout(() => {
-      setTapCount((previous) => previous + 1);
+    const previousTapCount = tapCount;
+    const newTapCount = previousTapCount + 1;
+
+    // Update UI immediately.
+    setTapCount(newTapCount);
+
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          tap_count: newTapCount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await loadLeaderboard();
+    } catch (error) {
+      console.error("FAILED TO SAVE TAP:", error);
+
+      // Roll back the UI if the database update fails.
+      setTapCount(previousTapCount);
+    } finally {
       setIsTapping(false);
-    }, 100);
+    }
+  };
+
+  // ================= REWARD HELPERS =================
+
+  const getClaimedReward = (level) => {
+    return claimedRewards.find(
+      (reward) => reward.level === level
+    );
   };
 
   const hasClaimedReward = (level) => {
-    return claimedRewards.includes(level);
+    return Boolean(getClaimedReward(level));
   };
 
-  const claimReward = (milestone) => {
+  // ================= CLAIM REWARD =================
+
+  const claimReward = async (milestone) => {
+    if (!user?.id) {
+      return;
+    }
+
     if (tapCount < milestone.tapsRequired) {
       return;
     }
@@ -71,15 +262,39 @@ function Game() {
 
     setClaimingLevel(milestone.level);
 
-    setTimeout(() => {
-      setClaimedRewards((previous) => [
-        ...previous,
-        milestone.level,
-      ]);
+    try {
+      const { data, error } = await supabase.rpc(
+        "claim_game_reward",
+        {
+          p_reward_level: milestone.level,
+        }
+      );
 
+      if (error) {
+        throw error;
+      }
+
+      console.log("REWARD CLAIMED:", data);
+
+      // Reload everything from Supabase so the NFT
+      // created by the RPC is immediately available.
+      await loadGameData();
+    } catch (error) {
+      console.error(
+        "FAILED TO CLAIM REWARD:",
+        error
+      );
+
+      alert(
+        error?.message ||
+          "Failed to claim this reward. Please try again."
+      );
+    } finally {
       setClaimingLevel(null);
-    }, 500);
+    }
   };
+
+  // ================= PROGRESS =================
 
   const getProgress = (milestone) => {
     if (tapCount >= milestone.tapsRequired) {
@@ -99,9 +314,22 @@ function Game() {
     );
   };
 
+  // ================= LOADING =================
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  // ================= PAGE =================
+
   return (
     <div className="space-y-8 pb-10">
       {/* Header */}
+
       <div>
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-yellow-400/10">
@@ -121,6 +349,7 @@ function Game() {
       </div>
 
       {/* Tap Game */}
+
       <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="text-center">
           <p className="text-sm text-gray-500">
@@ -155,6 +384,7 @@ function Game() {
       </section>
 
       {/* NFT Milestones */}
+
       <section>
         <div className="mb-4">
           <h2 className="text-xl font-semibold">
@@ -168,14 +398,17 @@ function Game() {
 
         <div className="grid gap-4 md:grid-cols-3">
           {MILESTONE_LEVELS.map((milestone) => {
-            const claimed = hasClaimedReward(
+            const claimedReward = getClaimedReward(
               milestone.level
             );
+
+            const claimed = Boolean(claimedReward);
 
             const unlocked =
               tapCount >= milestone.tapsRequired;
 
-            const progress = getProgress(milestone);
+            const progress =
+              getProgress(milestone);
 
             const remaining =
               getRemainingTaps(milestone);
@@ -212,6 +445,7 @@ function Game() {
                 </p>
 
                 {/* Progress */}
+
                 <div className="mt-5">
                   <div className="mb-2 flex justify-between text-xs text-gray-500">
                     <span>
@@ -234,6 +468,7 @@ function Game() {
                 </div>
 
                 {/* Claim */}
+
                 {!claimed && unlocked && (
                   <button
                     type="button"
@@ -257,6 +492,7 @@ function Game() {
                 )}
 
                 {/* Locked */}
+
                 {!claimed && !unlocked && (
                   <p className="mt-5 text-center text-xs text-gray-500">
                     {remaining.toLocaleString()} more taps
@@ -264,10 +500,37 @@ function Game() {
                   </p>
                 )}
 
-                {/* Claimed */}
-                {claimed && (
-                  <p className="mt-5 text-center text-xs text-green-500">
-                    Reward already claimed.
+                {/* Claimed NFT */}
+
+                {claimed && claimedReward.nft && (
+                  <div className="mt-5 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+                    <img
+                      src={claimedReward.nft.image_url}
+                      alt={claimedReward.nft.name}
+                      className="h-48 w-full object-cover"
+                    />
+
+                    <div className="p-4">
+                      <p className="text-sm font-semibold">
+                        {claimedReward.nft.name}
+                      </p>
+
+                      {claimedReward.nft.description && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          {claimedReward.nft.description}
+                        </p>
+                      )}
+
+                      <p className="mt-3 text-xs text-green-500">
+                        NFT added to your collection.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {claimed && !claimedReward.nft && (
+                  <p className="mt-5 text-center text-xs text-yellow-500">
+                    Reward claimed, but NFT details are unavailable.
                   </p>
                 )}
               </div>
@@ -276,7 +539,63 @@ function Game() {
         </div>
       </section>
 
+      {/* Your Game NFTs */}
+
+      {claimedRewards.some((reward) => reward.nft) && (
+        <section>
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold">
+              Your Game NFTs
+            </h2>
+
+            <p className="text-sm text-gray-500">
+              NFTs you earned from the Nimiq Tap Game.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {claimedRewards
+              .filter((reward) => reward.nft)
+              .map((reward) => (
+                <div
+                  key={reward.id}
+                  className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                >
+                  <img
+                    src={reward.nft.image_url}
+                    alt={reward.nft.name}
+                    className="h-56 w-full object-cover"
+                  />
+
+                  <div className="p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-semibold">
+                        {reward.nft.name}
+                      </h3>
+
+                      <span className="rounded-full bg-yellow-400/10 px-2.5 py-1 text-xs text-yellow-500">
+                        Level {reward.level}
+                      </span>
+                    </div>
+
+                    {reward.nft.description && (
+                      <p className="mt-2 text-sm text-gray-500">
+                        {reward.nft.description}
+                      </p>
+                    )}
+
+                    <p className="mt-4 text-xs text-green-500">
+                      Owned by you
+                    </p>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+
       {/* Leaderboard */}
+
       <section>
         <div className="mb-4">
           <h2 className="text-xl font-semibold">
@@ -290,28 +609,56 @@ function Game() {
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
           <div className="divide-y divide-gray-200 dark:divide-gray-800">
-            {leaderboard.map((player, index) => (
-              <div
-                key={player.id}
-                className="flex items-center justify-between px-5 py-4"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold dark:bg-gray-800">
-                    {index + 1}
-                  </div>
-
-                  <p className="font-medium">
-                    {player.username}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Zap className="h-4 w-4 text-yellow-400" />
-
-                  {player.tap_count.toLocaleString()}
-                </div>
+            {leaderboard.length === 0 ? (
+              <div className="px-5 py-8 text-center text-sm text-gray-500">
+                No players yet.
               </div>
-            ))}
+            ) : (
+              leaderboard.map((player) => {
+                const playerName =
+                  player.username ||
+                  player.display_name ||
+                  "Nimiq Player";
+
+                const isCurrentUser =
+                  player.id === user?.id;
+
+                return (
+                  <div
+                    key={player.id}
+                    className={`flex items-center justify-between px-5 py-4 ${
+                      isCurrentUser
+                        ? "bg-yellow-400/5"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold dark:bg-gray-800">
+                        {player.rank}
+                      </div>
+
+                      <div>
+                        <p className="font-medium">
+                          {playerName}
+                        </p>
+
+                        {isCurrentUser && (
+                          <p className="text-xs text-yellow-500">
+                            You
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Zap className="h-4 w-4 text-yellow-400" />
+
+                      {(player.tap_count ?? 0).toLocaleString()}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </section>

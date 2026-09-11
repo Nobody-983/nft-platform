@@ -61,9 +61,9 @@ function AppContent() {
         <Route
           path="/game"
           element={
-          // <ProtectedRoute>
+          <ProtectedRoute>
             <Game />
-          //  </ProtectedRoute>
+           </ProtectedRoute>
 
           }
         />
