@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Sun, Zap, Loader2 } from "lucide-react";
 
-import { useWallet } from "../context/walletContext";
-import { supabase } from "../lib/supabase";
+import { useWallet } from "../../context/walletContext";
+import { supabase } from "../../lib/supabase";
 
 const MILESTONE_LEVELS = [
   {
@@ -116,6 +116,7 @@ function Game() {
     const previousTapCount = tapCount;
     const newTapCount = previousTapCount + 1;
 
+    // Optimistic UI update
     setTapCount(newTapCount);
 
     try {
@@ -135,6 +136,7 @@ function Game() {
     } catch (error) {
       console.error("FAILED TO SAVE TAP:", error);
 
+      // Roll back if database update failed
       setTapCount(previousTapCount);
     } finally {
       setIsTapping(false);
@@ -179,7 +181,6 @@ function Game() {
         milestone.level,
       ]);
 
-      // Reload everything so the UI reflects the database state.
       await loadGameData();
     } catch (error) {
       console.error("FAILED TO CLAIM REWARD:", error);
