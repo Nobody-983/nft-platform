@@ -45,7 +45,12 @@ function AppContent() {
 
         <Route
           path="/wallet"
-          element={<ProtectedRoute><Wallet /></ProtectedRoute>}
+          element={
+          // <ProtectedRoute>
+            <Wallet />
+          // </ProtectedRoute>
+
+          }
         />
 
         <Route
