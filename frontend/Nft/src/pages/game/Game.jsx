@@ -1,9 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Sun, Zap, Loader2 } from "lucide-react";
-
-// Navigating up two levels from src/pages/game/ to src/
-import { useWallet } from "../../context/walletContext.jsx";
-import { supabase } from "../../lib/supabase.js";
 
 const MILESTONE_LEVELS = [
   {
@@ -24,134 +20,47 @@ const MILESTONE_LEVELS = [
 ];
 
 function Game() {
-  const { user, isConnected } = useWallet();
-
-  const [tapCount, setTapCount] = useState(0);
-  const [claimedRewards, setClaimedRewards] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]);
-
-  const [isLoading, setIsLoading] = useState(true);
+  const [tapCount, setTapCount] = useState(1200);
+  const [claimedRewards, setClaimedRewards] = useState([1]);
   const [isTapping, setIsTapping] = useState(false);
   const [claimingLevel, setClaimingLevel] = useState(null);
 
-  const loadGameData = useCallback(async () => {
-    if (!user?.id) {
-      setTapCount(0);
-      setClaimedRewards([]);
-      setIsLoading(false);
-      return;
-    }
+  const leaderboard = [
+    {
+      id: 1,
+      username: "Nimiq Player",
+      tap_count: 8500,
+    },
+    {
+      id: 2,
+      username: "Crypto Tapper",
+      tap_count: 6200,
+    },
+    {
+      id: 3,
+      username: "Nimiq Hero",
+      tap_count: 4100,
+    },
+  ];
 
-    setIsLoading(true);
-
-    try {
-      const [profileResult, rewardsResult] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("tap_count")
-          .eq("id", user.id)
-          .single(),
-
-        supabase
-          .from("reward_claims")
-          .select("reward_level")
-          .eq("user_id", user.id)
-          .order("reward_level", { ascending: true }),
-      ]);
-
-      if (profileResult.error) {
-        throw profileResult.error;
-      }
-
-      if (rewardsResult.error) {
-        throw rewardsResult.error;
-      }
-
-      setTapCount(profileResult.data?.tap_count ?? 0);
-
-      setClaimedRewards(
-        (rewardsResult.data ?? []).map(
-          (reward) => reward.reward_level
-        )
-      );
-    } catch (error) {
-      console.error("FAILED TO LOAD GAME DATA:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user?.id]);
-
-  const loadLeaderboard = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select(
-          "id, username, display_name, avatar_url, tap_count"
-        )
-        .order("tap_count", { ascending: false })
-        .limit(10);
-
-      if (error) {
-        throw error;
-      }
-
-      setLeaderboard(data ?? []);
-    } catch (error) {
-      console.error("FAILED TO LOAD LEADERBOARD:", error);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadGameData();
-    loadLeaderboard();
-  }, [loadGameData, loadLeaderboard]);
-
-  const handleTap = async () => {
-    if (!user?.id || isTapping) {
+  const handleTap = () => {
+    if (isTapping) {
       return;
     }
 
     setIsTapping(true);
 
-    const previousTapCount = tapCount;
-    const newTapCount = previousTapCount + 1;
-
-    // Optimistic UI update
-    setTapCount(newTapCount);
-
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          tap_count: newTapCount,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
-
-      if (error) {
-        throw error;
-      }
-
-      await loadLeaderboard();
-    } catch (error) {
-      console.error("FAILED TO SAVE TAP:", error);
-
-      // Roll back if database update failed
-      setTapCount(previousTapCount);
-    } finally {
+    setTimeout(() => {
+      setTapCount((previous) => previous + 1);
       setIsTapping(false);
-    }
+    }, 100);
   };
 
   const hasClaimedReward = (level) => {
     return claimedRewards.includes(level);
   };
 
-  const claimReward = async (milestone) => {
-    if (!user?.id) {
-      return;
-    }
-
+  const claimReward = (milestone) => {
     if (tapCount < milestone.tapsRequired) {
       return;
     }
@@ -162,36 +71,14 @@ function Game() {
 
     setClaimingLevel(milestone.level);
 
-    try {
-      const { data, error } = await supabase.rpc(
-        "claim_game_reward",
-        {
-          p_reward_level: milestone.level,
-        }
-      );
-
-      if (error) {
-        throw error;
-      }
-
-      console.log("REWARD CLAIMED:", data);
-
+    setTimeout(() => {
       setClaimedRewards((previous) => [
         ...previous,
         milestone.level,
       ]);
 
-      await loadGameData();
-    } catch (error) {
-      console.error("FAILED TO CLAIM REWARD:", error);
-
-      alert(
-        error?.message ||
-          "Failed to claim this reward. Please try again."
-      );
-    } finally {
       setClaimingLevel(null);
-    }
+    }, 500);
   };
 
   const getProgress = (milestone) => {
@@ -211,33 +98,6 @@ function Game() {
       0
     );
   };
-
-  if (!isConnected || !user) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="text-center">
-          <Zap className="mx-auto mb-4 h-10 w-10" />
-
-          <h2 className="text-xl font-semibold">
-            Connect your wallet to play
-          </h2>
-
-          <p className="mt-2 text-sm text-gray-500">
-            Connect your Nimiq wallet to start earning taps
-            and rewards.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-8 pb-10">
@@ -429,53 +289,30 @@ function Game() {
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-          {leaderboard.length === 0 ? (
-            <div className="p-6 text-center text-sm text-gray-500">
-              No players yet.
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-200 dark:divide-gray-800">
-              {leaderboard.map((player, index) => {
-                const name =
-                  player.username ||
-                  player.display_name ||
-                  "Nimiq Player";
-
-                return (
-                  <div
-                    key={player.id}
-                    className="flex items-center justify-between px-5 py-4"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold dark:bg-gray-800">
-                        {index + 1}
-                      </div>
-
-                      <div>
-                        <p className="font-medium">
-                          {name}
-                        </p>
-
-                        {player.id === user.id && (
-                          <p className="text-xs text-yellow-500">
-                            You
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-sm font-semibold">
-                      <Zap className="h-4 w-4 text-yellow-400" />
-
-                      {Number(
-                        player.tap_count ?? 0
-                      ).toLocaleString()}
-                    </div>
+          <div className="divide-y divide-gray-200 dark:divide-gray-800">
+            {leaderboard.map((player, index) => (
+              <div
+                key={player.id}
+                className="flex items-center justify-between px-5 py-4"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold dark:bg-gray-800">
+                    {index + 1}
                   </div>
-                );
-              })}
-            </div>
-          )}
+
+                  <p className="font-medium">
+                    {player.username}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Zap className="h-4 w-4 text-yellow-400" />
+
+                  {player.tap_count.toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     </div>
