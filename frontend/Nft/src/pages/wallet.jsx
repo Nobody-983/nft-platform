@@ -9,7 +9,6 @@ import {
   Loader2,
   RefreshCw,
   X,
-  ExternalLink,
 } from "lucide-react";
 
 import { useWallet } from "../context/walletContext";
@@ -27,7 +26,6 @@ function Wallet() {
     loading: walletLoading,
     connectWallet,
     disconnectWallet,
-    user,
     profile,
     balance,
     consensus,
@@ -55,9 +53,9 @@ function Wallet() {
   // ==========================================
 
   useEffect(() => {
-    if (walletAddress) {
-      refreshBalance(walletAddress);
-    }
+    if (!walletAddress) return;
+
+    refreshBalance(walletAddress);
   }, [walletAddress, refreshBalance]);
 
   // ==========================================
@@ -93,7 +91,8 @@ function Wallet() {
     try {
       await refreshBalance(walletAddress);
     } catch (err) {
-      console.warn("Refresh balance error:", err);
+      console.error("REFRESH BALANCE ERROR:", err);
+      setError("Failed to refresh wallet balance.");
     } finally {
       setTimeout(() => {
         setRefreshing(false);
@@ -107,7 +106,7 @@ function Wallet() {
 
   const handleOpenReceive = () => {
     if (!walletAddress) {
-      setError("Please connect your Nimiq wallet first.");
+      setError("Please connect your Nimiq testnet wallet first.");
       return;
     }
 
@@ -121,11 +120,12 @@ function Wallet() {
 
   const handleOpenSend = () => {
     if (!walletAddress) {
-      setError("Please connect your Nimiq wallet first.");
+      setError("Please connect your Nimiq testnet wallet first.");
       return;
     }
 
     setError("");
+    setSuccess("");
     setSendTxHash("");
     setSendRecipient("");
     setSendAmount("");
@@ -136,9 +136,12 @@ function Wallet() {
   const handleExecuteSend = async (e) => {
     e.preventDefault();
 
+    setError("");
+    setSuccess("");
+
     if (!nimiq) {
       setError(
-        "Nimiq Pay provider is not initialized. Please ensure the app is open in Nimiq Pay."
+        "Nimiq Testnet provider is not initialized. Please open the app inside Nimiq Pay."
       );
       return;
     }
@@ -147,26 +150,24 @@ function Wallet() {
 
     if (!cleanRecip || !cleanRecip.startsWith("NQ")) {
       setError(
-        "Please enter a valid recipient address starting with 'NQ'."
+        "Please enter a valid Nimiq recipient address starting with NQ."
       );
       return;
     }
 
     const numAmount = Number(sendAmount);
 
-    if (isNaN(numAmount) || numAmount <= 0) {
+    if (!Number.isFinite(numAmount) || numAmount <= 0) {
       setError("Please enter an amount greater than 0 NIM.");
       return;
     }
 
     if (numAmount > balance) {
-      setError("Insufficient NIM balance.");
+      setError("Insufficient testnet NIM balance.");
       return;
     }
 
     setSending(true);
-    setError("");
-    setSuccess("");
 
     try {
       const txHash = await sendNIMTransaction(nimiq, {
@@ -175,17 +176,20 @@ function Wallet() {
         data: sendMessage.trim(),
       });
 
-      setSendTxHash(txHash || "Success");
-      setSuccess("Transaction broadcasted successfully!");
+      setSendTxHash(txHash || "Transaction submitted");
+      setSuccess("Testnet transaction broadcasted successfully!");
 
       setTimeout(() => {
-        refreshBalance(walletAddress);
-      }, 2000);
+        if (walletAddress) {
+          refreshBalance(walletAddress);
+        }
+      }, 3000);
     } catch (err) {
-      console.error("Send NIM error:", err);
+      console.error("SEND TESTNET NIM ERROR:", err);
 
       setError(
-        err?.message || "Failed to complete transaction."
+        err?.message ||
+          "Failed to complete the testnet transaction."
       );
     } finally {
       setSending(false);
@@ -193,10 +197,8 @@ function Wallet() {
   };
 
   // ==========================================
-  // TRANSACTIONS
+  // ADDRESS
   // ==========================================
-
-  const transactions = [];
 
   const shortWalletAddress = walletAddress
     ? shortenAddress(walletAddress, 6, 6)
@@ -216,12 +218,18 @@ function Wallet() {
       {/* HEADER */}
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">
-          Wallet
-        </h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight">
+            Wallet
+          </h1>
+
+          <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-400">
+            TESTNET
+          </span>
+        </div>
 
         <p className="mt-1 text-sm text-gray-400">
-          Manage your Nimiq wallet, balance and transactions.
+          Manage your Nimiq testnet wallet, balance and transactions.
         </p>
       </div>
 
@@ -258,6 +266,26 @@ function Wallet() {
         )}
 
         {/* =========================
+            TESTNET NOTICE
+        ========================= */}
+
+        <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-yellow-400" />
+
+            <div>
+              <p className="text-sm font-medium text-yellow-300">
+                Nimiq Testnet
+              </p>
+
+              <p className="mt-1 text-xs text-yellow-400/70">
+                You are using testnet NIM. Testnet tokens have no real-world value.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* =========================
             WALLET BALANCE
         ========================= */}
 
@@ -272,7 +300,7 @@ function Wallet() {
               />
 
               <span className="text-sm">
-                Wallet Balance
+                Testnet Wallet Balance
               </span>
             </div>
 
@@ -301,7 +329,7 @@ function Wallet() {
 
             <h2 className="text-4xl font-bold tracking-tight">
               {walletAddress
-                ? `${balance.toLocaleString(undefined, {
+                ? `${Number(balance || 0).toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 5,
                   })} NIM`
@@ -310,8 +338,8 @@ function Wallet() {
 
             <p className="mt-2 text-sm text-gray-400">
               {walletAddress
-                ? "Nimiq main account balance"
-                : "Connect your Nimiq wallet to view your balance"}
+                ? "Nimiq Testnet account balance"
+                : "Connect your Nimiq wallet to view your testnet balance"}
             </p>
 
           </div>
@@ -337,16 +365,17 @@ function Wallet() {
             </div>
 
             {consensus && (
-              <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2.5 py-0.5 text-xs text-purple-300">
-                Consensus Synced
+              <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2.5 py-0.5 text-xs text-green-300">
+                Testnet Synced
               </span>
             )}
 
-            {blockNumber && (
-              <span className="text-xs text-gray-500">
-                Block #{blockNumber.toLocaleString()}
-              </span>
-            )}
+            {blockNumber !== null &&
+              blockNumber !== undefined && (
+                <span className="text-xs text-gray-500">
+                  Block #{Number(blockNumber).toLocaleString()}
+                </span>
+              )}
 
           </div>
 
@@ -366,7 +395,7 @@ function Wallet() {
               </p>
 
               <p className="mt-1 text-xs text-gray-500">
-                Connected to your Nimiq profile
+                Connected to your Nimiq testnet wallet
               </p>
             </div>
 
@@ -396,7 +425,7 @@ function Wallet() {
               <div className="rounded-xl border border-white/10 bg-black/20 p-4">
 
                 <p className="mb-2 text-xs text-gray-500">
-                  Wallet Address
+                  Testnet Wallet Address
                 </p>
 
                 <div className="flex items-center gap-3">
@@ -425,7 +454,7 @@ function Wallet() {
 
               </div>
 
-              <div className="mt-3 flex items-center justify-between">
+              <div className="mt-3">
 
                 <p className="break-all font-mono text-xs text-gray-500">
                   {formattedFullAddress}
@@ -438,20 +467,6 @@ function Wallet() {
                   Wallet address copied to clipboard!
                 </p>
               )}
-
-              <div className="mt-4 flex items-center gap-3">
-
-                <a
-                  href={`https://nimiq.watch/#${cleanAddress(walletAddress)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-purple-400 transition hover:text-purple-300"
-                >
-                  View on Nimiq Watch
-                  <ExternalLink size={13} />
-                </a>
-
-              </div>
             </>
 
           ) : (
@@ -463,7 +478,7 @@ function Wallet() {
               </p>
 
               <p className="mt-1 text-xs text-gray-500">
-                Connect your Nimiq wallet to start trading NFTs and sending payments.
+                Connect your Nimiq wallet to start using testnet NIM.
               </p>
 
               <button
@@ -555,8 +570,7 @@ function Wallet() {
               </p>
 
               <p className="mt-1 font-mono text-sm">
-                {profile?.username ||
-                  "Not logged in"}
+                {profile?.username || "Not logged in"}
               </p>
 
             </div>
@@ -598,18 +612,17 @@ function Wallet() {
                 </p>
 
                 <p className="mt-1 text-sm text-gray-300">
-                  {consensus
-                    ? "Nimiq Network (Synced)"
-                    : "Nimiq Network"}
+                  Nimiq Testnet
                 </p>
 
               </div>
 
-              {blockNumber && (
-                <span className="text-xs text-gray-500">
-                  Height #{blockNumber}
-                </span>
-              )}
+              {blockNumber !== null &&
+                blockNumber !== undefined && (
+                  <span className="text-xs text-gray-500">
+                    Height #{Number(blockNumber).toLocaleString()}
+                  </span>
+                )}
 
             </div>
 
@@ -629,42 +642,9 @@ function Wallet() {
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03]">
 
-            {transactions.length === 0 ? (
-              <div className="p-5 text-sm text-gray-500">
-                No recent transactions.
-              </div>
-            ) : (
-              transactions.map(([title, amount, date]) => (
-                <div
-                  key={`${title}-${date}`}
-                  className="flex items-center justify-between border-b border-white/10 p-5 last:border-0"
-                >
-
-                  <div>
-
-                    <p className="font-medium">
-                      {title}
-                    </p>
-
-                    <p className="mt-1 text-xs text-gray-500">
-                      {date}
-                    </p>
-
-                  </div>
-
-                  <p
-                    className={`font-semibold ${
-                      amount.startsWith("+")
-                        ? "text-green-400"
-                        : "text-white"
-                    }`}
-                  >
-                    {amount}
-                  </p>
-
-                </div>
-              ))
-            )}
+            <div className="p-5 text-sm text-gray-500">
+              No recent transactions.
+            </div>
 
           </div>
 
@@ -690,7 +670,7 @@ function Wallet() {
                   className="text-purple-400"
                 />
 
-                Receive NIM
+                Receive Testnet NIM
 
               </h3>
 
@@ -707,13 +687,13 @@ function Wallet() {
             <div className="mt-5 space-y-4">
 
               <p className="text-xs text-gray-400">
-                Share your Nimiq address with the sender to receive NIM directly into your wallet.
+                Share this Nimiq testnet address with the sender to receive testnet NIM.
               </p>
 
               <div className="rounded-xl border border-white/10 bg-black/30 p-4">
 
                 <p className="mb-1 text-xs text-gray-500">
-                  Your Nimiq Address
+                  Your Testnet Nimiq Address
                 </p>
 
                 <p className="break-all font-mono text-sm leading-relaxed text-white">
@@ -722,41 +702,28 @@ function Wallet() {
 
               </div>
 
-              <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 py-3 text-sm font-semibold transition hover:bg-purple-700"
+              >
 
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-purple-600 py-3 text-sm font-semibold transition hover:bg-purple-700"
-                >
+                {copied ? (
+                  <>
+                    <Check size={16} />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy size={16} />
+                    Copy Address
+                  </>
+                )}
 
-                  {copied ? (
-                    <>
-                      <Check size={16} />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={16} />
-                      Copy Address
-                    </>
-                  )}
-
-                </button>
-
-                <a
-                  href={`https://nimiq.watch/#${cleanAddress(walletAddress)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-medium transition hover:bg-white/[0.1]"
-                >
-                  <ExternalLink size={16} />
-                </a>
-
-              </div>
+              </button>
 
               <p className="text-center text-[11px] text-gray-500">
-                Only send NIM to this address.
+                Only send Nimiq testnet NIM to this address.
               </p>
 
             </div>
@@ -784,7 +751,7 @@ function Wallet() {
                   className="text-purple-400"
                 />
 
-                Send NIM
+                Send Testnet NIM
 
               </h3>
 
@@ -810,8 +777,12 @@ function Wallet() {
                   Transaction Sent!
                 </h4>
 
-                <p className="break-all font-mono text-xs text-gray-400">
-                  Hash: {sendTxHash}
+                <p className="text-xs text-gray-400">
+                  Your testnet transaction was submitted successfully.
+                </p>
+
+                <p className="break-all rounded-xl bg-black/30 p-3 font-mono text-xs text-gray-400">
+                  {sendTxHash}
                 </p>
 
                 <button
@@ -859,7 +830,7 @@ function Wallet() {
                     </label>
 
                     <span className="text-xs text-gray-500">
-                      Balance: {balance.toFixed(2)} NIM
+                      Balance: {Number(balance || 0).toFixed(2)} NIM
                     </span>
 
                   </div>
@@ -882,7 +853,9 @@ function Wallet() {
                     <button
                       type="button"
                       onClick={() =>
-                        setSendAmount(String(balance))
+                        setSendAmount(
+                          String(Number(balance || 0))
+                        )
                       }
                       className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-semibold text-purple-400 transition hover:text-purple-300"
                     >
@@ -911,8 +884,8 @@ function Wallet() {
 
                 </div>
 
-                <div className="rounded-xl border border-purple-500/20 bg-purple-500/10 p-3 text-xs text-purple-300">
-                  Every transaction requires user confirmation in the native Nimiq Pay dialog.
+                <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-xs text-yellow-300">
+                  This transaction uses Nimiq Testnet. You will still need to confirm the transaction in Nimiq Pay.
                 </div>
 
                 <button
@@ -932,7 +905,7 @@ function Wallet() {
                   ) : (
                     <>
                       <ArrowUpRight size={16} />
-                      Send Transaction
+                      Send Testnet NIM
                     </>
                   )}
 
