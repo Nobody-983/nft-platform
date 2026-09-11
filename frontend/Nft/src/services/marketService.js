@@ -1,3 +1,4 @@
+
 import { supabase } from "../lib/supabase";
 
 const MARKETPLACE_TABLE = "marketplace_listings";
@@ -83,27 +84,24 @@ export async function createListing({
   const user = await getCurrentUser();
 
   /*
-   * Make sure the NFT actually belongs to the logged-in user.
-   * This prevents a user from attempting to list another user's NFT.
+   * Make sure the logged-in user is the current owner.
+   * The creator and current owner can be different after a sale.
    */
-  const { data: nft, error: nftError } = await supabase
-    .from("nfts")
-    .select("id, creator_id")
-    .eq("id", nft_id)
+  const { data: ownership, error: ownershipError } = await supabase
+    .from("nft_ownership")
+    .select("nft_id, owner_id")
+    .eq("nft_id", nft_id)
+    .eq("owner_id", user.id)
     .single();
 
-  if (nftError) {
-    console.error("CHECK NFT OWNERSHIP ERROR:", nftError);
-    throw nftError;
+  if (ownershipError) {
+    console.error("CHECK NFT OWNERSHIP ERROR:", ownershipError);
+    throw ownershipError;
   }
 
-  if (!nft) {
-    throw new Error("NFT not found.");
-  }
-
-  if (nft.creator_id !== user.id) {
+  if (!ownership) {
     throw new Error(
-      "You can only list NFTs that belong to you."
+      "You can only list NFTs that you currently own."
     );
   }
 
