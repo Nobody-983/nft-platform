@@ -1,9 +1,9 @@
-
 import { useCallback, useEffect, useState } from "react";
 import { Sun, Zap, Loader2 } from "lucide-react";
 
-import { useWallet } from "../../context/walletContext";
-import { supabase } from "../../lib/supabase";
+// Navigating up two levels from src/pages/game/ to src/
+import { useWallet } from "../../context/walletContext.jsx";
+import { supabase } from "../../lib/supabase.js";
 
 const MILESTONE_LEVELS = [
   {
