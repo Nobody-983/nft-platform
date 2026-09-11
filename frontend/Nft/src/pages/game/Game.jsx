@@ -2,110 +2,50 @@
 import { useCallback, useEffect, useState } from "react";
 import { Sun, Zap, Loader2 } from "lucide-react";
 
-import { useWallet } from "../../context/walletContext";
-import { supabase } from "../../lib/supabase";
-import {
-  initNimiq,
-  fetchNimiqBalance,
-  sendNIMTransaction,
-} from "../../lib/nimiq";
-
-// Replace this with the public Nimiq wallet that receives
-// payments for tap packs.
-const GAME_TREASURY_ADDRESS =
-  "REPLACE_WITH_GAME_TREASURY_ADDRESS";
-
-const TAP_PACKS = [
-  {
-    taps: 10,
-    price: 0.1,
-    popular: true,
-  },
-  {
-    taps: 50,
-    price: 0.5,
-  },
-  {
-    taps: 100,
-    price: 1,
-  },
-];
+import { useWallet } from "../context/walletContext";
+import { supabase } from "../lib/supabase";
 
 const MILESTONE_LEVELS = [
   {
     level: 1,
-    tapsRequired: 50,
+    tapsRequired: 500,
     reward: "Bronze NFT",
   },
   {
     level: 2,
-    tapsRequired: 200,
+    tapsRequired: 2000,
     reward: "Silver NFT",
   },
   {
     level: 3,
-    tapsRequired: 500,
+    tapsRequired: 5000,
     reward: "Gold NFT",
   },
 ];
 
 function Game() {
-  const {
-    walletAddress,
-    isConnected,
-    user,
-    balance,
-    refreshBalance,
-  } = useWallet();
+  const { user, isConnected } = useWallet();
 
   const [tapCount, setTapCount] = useState(0);
+  const [claimedRewards, setClaimedRewards] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
 
-  const [isLoadingGame, setIsLoadingGame] =
-    useState(true);
-
-  const [isTapping, setIsTapping] =
-    useState(false);
-
-  const [buyingPack, setBuyingPack] =
-    useState(null);
-
-  const [claimedRewardLevels, setClaimedRewardLevels] =
-    useState([]);
-
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  const [leaderboard, setLeaderboard] =
-    useState([]);
-
-  const [loadingLeaderboard, setLoadingLeaderboard] =
-    useState(true);
-
-  const [errorLeaderboard, setErrorLeaderboard] =
-    useState("");
-
-  /*
-   * ========================================================
-   * LOAD GAME DATA
-   * ========================================================
-   */
+  const [isLoading, setIsLoading] = useState(true);
+  const [isTapping, setIsTapping] = useState(false);
+  const [claimingLevel, setClaimingLevel] = useState(null);
 
   const loadGameData = useCallback(async () => {
     if (!user?.id) {
       setTapCount(0);
-      setClaimedRewardLevels([]);
-      setIsLoadingGame(false);
+      setClaimedRewards([]);
+      setIsLoading(false);
       return;
     }
 
-    setIsLoadingGame(true);
-    setError("");
+    setIsLoading(true);
 
     try {
-      const [
-        { data: profile, error: profileError },
-        { data: claims, error: claimsError },
-      ] = await Promise.all([
+      const [profileResult, rewardsResult] = await Promise.all([
         supabase
           .from("profiles")
           .select("tap_count")
@@ -115,931 +55,428 @@ function Game() {
         supabase
           .from("reward_claims")
           .select("reward_level")
-          .eq("user_id", user.id),
+          .eq("user_id", user.id)
+          .order("reward_level", { ascending: true }),
       ]);
 
-      if (profileError) {
-        throw new Error(
-          profileError.message ||
-            "Unable to load your game profile."
-        );
+      if (profileResult.error) {
+        throw profileResult.error;
       }
 
-      if (claimsError) {
-        throw new Error(
-          claimsError.message ||
-            "Unable to load your rewards."
-        );
+      if (rewardsResult.error) {
+        throw rewardsResult.error;
       }
 
-      setTapCount(
-        Number(profile?.tap_count) || 0
-      );
+      setTapCount(profileResult.data?.tap_count ?? 0);
 
-      setClaimedRewardLevels(
-        (claims || []).map((claim) =>
-          Number(claim.reward_level)
+      setClaimedRewards(
+        (rewardsResult.data ?? []).map(
+          (reward) => reward.reward_level
         )
       );
-    } catch (err) {
-      console.error(
-        "Game data error:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Failed to load your game data."
-      );
+    } catch (error) {
+      console.error("FAILED TO LOAD GAME DATA:", error);
     } finally {
-      setIsLoadingGame(false);
+      setIsLoading(false);
     }
   }, [user?.id]);
 
+  const loadLeaderboard = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(
+          "id, username, display_name, avatar_url, tap_count"
+        )
+        .order("tap_count", { ascending: false })
+        .limit(10);
+
+      if (error) {
+        throw error;
+      }
+
+      setLeaderboard(data ?? []);
+    } catch (error) {
+      console.error("FAILED TO LOAD LEADERBOARD:", error);
+    }
+  }, []);
+
   useEffect(() => {
     loadGameData();
-  }, [loadGameData]);
-
-  /*
-   * ========================================================
-   * LEADERBOARD
-   * ========================================================
-   */
-
-  const loadLeaderboard = useCallback(
-    async () => {
-      setLoadingLeaderboard(true);
-      setErrorLeaderboard("");
-
-      try {
-        const {
-          data,
-          error: leaderboardError,
-        } = await supabase
-          .from("profiles")
-          .select(
-            "id, username, display_name, tap_count"
-          )
-          .order("tap_count", {
-            ascending: false,
-          })
-          .limit(10);
-
-        if (leaderboardError) {
-          throw leaderboardError;
-        }
-
-        setLeaderboard(
-          (data || []).map((entry, index) => ({
-            id: entry.id,
-
-            username:
-              entry.username ||
-              entry.display_name ||
-              `Player ${index + 1}`,
-
-            tap_count:
-              Number(entry.tap_count) || 0,
-          }))
-        );
-      } catch (err) {
-        console.error(
-          "Leaderboard error:",
-          err
-        );
-
-        setErrorLeaderboard(
-          err?.message ||
-            "Failed to load leaderboard."
-        );
-      } finally {
-        setLoadingLeaderboard(false);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
     loadLeaderboard();
-  }, [loadLeaderboard]);
-
-  /*
-   * ========================================================
-   * TAP THE COIN
-   * ========================================================
-   */
+  }, [loadGameData, loadLeaderboard]);
 
   const handleTap = async () => {
-    if (
-      !user?.id ||
-      isTapping ||
-      isLoadingGame
-    ) {
+    if (!user?.id || isTapping) {
       return;
     }
 
     setIsTapping(true);
-    setError("");
-    setSuccess("");
 
-    const previousCount = tapCount;
-    const newCount = previousCount + 1;
+    const previousTapCount = tapCount;
+    const newTapCount = previousTapCount + 1;
 
-    // Update UI immediately.
-    setTapCount(newCount);
+    setTapCount(newTapCount);
 
     try {
-      const {
-        error: updateError,
-      } = await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
-          tap_count: newCount,
+          tap_count: newTapCount,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", user.id);
 
-      if (updateError) {
-        throw updateError;
+      if (error) {
+        throw error;
       }
-    } catch (err) {
-      console.error(
-        "Tap update error:",
-        err
-      );
 
-      // Roll back if database update fails.
-      setTapCount(previousCount);
+      await loadLeaderboard();
+    } catch (error) {
+      console.error("FAILED TO SAVE TAP:", error);
 
-      setError(
-        err?.message ||
-          "Tap could not be saved."
-      );
+      setTapCount(previousTapCount);
     } finally {
       setIsTapping(false);
     }
   };
 
-  /*
-   * ========================================================
-   * BUY TAP PACK
-   * ========================================================
-   */
+  const hasClaimedReward = (level) => {
+    return claimedRewards.includes(level);
+  };
 
-  const handleBuyTapPack = async (pack) => {
-    const { taps, price } = pack;
-
-    if (
-      !user?.id ||
-      !walletAddress ||
-      !isConnected
-    ) {
-      setError(
-        "Connect your Nimiq wallet first."
-      );
+  const claimReward = async (milestone) => {
+    if (!user?.id) {
       return;
     }
 
-    if (
-      GAME_TREASURY_ADDRESS ===
-      "REPLACE_WITH_GAME_TREASURY_ADDRESS"
-    ) {
-      setError(
-        "Game payment wallet has not been configured."
-      );
+    if (tapCount < milestone.tapsRequired) {
       return;
     }
 
-    if (buyingPack !== null) {
+    if (hasClaimedReward(milestone.level)) {
       return;
     }
 
-    setBuyingPack(taps);
-    setError("");
-    setSuccess("");
+    setClaimingLevel(milestone.level);
 
     try {
-      /*
-       * Check balance.
-       */
-
-      const currentBalance =
-        await fetchNimiqBalance(
-          walletAddress
-        );
-
-      if (
-        (currentBalance || 0) < price
-      ) {
-        throw new Error(
-          `You need at least ${price} NIM to purchase this pack.`
-        );
-      }
-
-      /*
-       * Initialize Nimiq wallet.
-       */
-
-      const provider =
-        await initNimiq({
-          timeout: 10000,
-        });
-
-      /*
-       * Send NIM to the game treasury.
-       */
-
-      const txHash =
-        await sendNIMTransaction(
-          provider,
-          {
-            recipient:
-              GAME_TREASURY_ADDRESS,
-
-            valueInNim: price,
-          }
-        );
-
-      if (!txHash) {
-        throw new Error(
-          "Transaction did not return a transaction hash."
-        );
-      }
-
-      /*
-       * Add purchased taps.
-       *
-       * NOTE:
-       * A production implementation should verify the
-       * blockchain transaction on the backend before
-       * awarding the taps.
-       */
-
-      const newTapCount =
-        tapCount + taps;
-
-      const {
-        error: updateError,
-      } = await supabase
-        .from("profiles")
-        .update({
-          tap_count: newTapCount,
-        })
-        .eq("id", user.id);
-
-      if (updateError) {
-        throw new Error(
-          "Payment was submitted, but the taps could not be recorded. Transaction: " +
-            txHash
-        );
-      }
-
-      setTapCount(newTapCount);
-
-      setSuccess(
-        `Purchased ${taps} taps for ${price} NIM.`
+      const { data, error } = await supabase.rpc(
+        "claim_game_reward",
+        {
+          p_reward_level: milestone.level,
+        }
       );
 
-      /*
-       * Refresh balance.
-       */
-
-      if (refreshBalance) {
-        await refreshBalance(
-          walletAddress
-        );
+      if (error) {
+        throw error;
       }
 
-      await loadLeaderboard();
-    } catch (err) {
-      console.error(
-        "Tap purchase error:",
-        err
-      );
+      console.log("REWARD CLAIMED:", data);
 
-      setError(
-        err?.message ||
-          "Tap purchase failed."
+      setClaimedRewards((previous) => [
+        ...previous,
+        milestone.level,
+      ]);
+
+      // Reload everything so the UI reflects the database state.
+      await loadGameData();
+    } catch (error) {
+      console.error("FAILED TO CLAIM REWARD:", error);
+
+      alert(
+        error?.message ||
+          "Failed to claim this reward. Please try again."
       );
     } finally {
-      setBuyingPack(null);
+      setClaimingLevel(null);
     }
   };
 
-  /*
-   * ========================================================
-   * REWARDS
-   * ========================================================
-   */
+  const getProgress = (milestone) => {
+    if (tapCount >= milestone.tapsRequired) {
+      return 100;
+    }
 
-  const hasClaimedReward = (level) => {
-    return claimedRewardLevels.includes(
-      level
+    return Math.min(
+      (tapCount / milestone.tapsRequired) * 100,
+      100
     );
   };
 
-  const claimReward = async (level) => {
-    if (!user?.id) {
-      setError(
-        "Connect your wallet first."
-      );
-      return;
-    }
-
-    const milestone =
-      MILESTONE_LEVELS.find(
-        (item) =>
-          item.level === level
-      );
-
-    if (!milestone) {
-      return;
-    }
-
-    if (
-      tapCount <
-      milestone.tapsRequired
-    ) {
-      setError(
-        `You need ${milestone.tapsRequired} taps to claim this reward.`
-      );
-      return;
-    }
-
-    if (
-      hasClaimedReward(level)
-    ) {
-      setError(
-        "This reward has already been claimed."
-      );
-      return;
-    }
-
-    setError("");
-    setSuccess("");
-
-    try {
-      const {
-        error: claimError,
-      } = await supabase
-        .from("reward_claims")
-        .insert({
-          user_id: user.id,
-          reward_level: level,
-        });
-
-      if (claimError) {
-        throw claimError;
-      }
-
-      setClaimedRewardLevels(
-        (previous) => [
-          ...previous,
-          level,
-        ]
-      );
-
-      setSuccess(
-        `${milestone.reward} claimed successfully.`
-      );
-    } catch (err) {
-      console.error(
-        "Reward claim error:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Failed to claim reward."
-      );
-    }
+  const getRemainingTaps = (milestone) => {
+    return Math.max(
+      milestone.tapsRequired - tapCount,
+      0
+    );
   };
 
-  /*
-   * ========================================================
-   * WALLET DISPLAY
-   * ========================================================
-   */
-
-  const shortWallet =
-    walletAddress
-      ? `${walletAddress.slice(
-          0,
-          6
-        )}...${walletAddress.slice(-6)}`
-      : "Not connected";
-
-  /*
-   * ========================================================
-   * LOADING
-   * ========================================================
-   */
-
-  if (isLoadingGame) {
+  if (!isConnected || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#08080f] text-white">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2
-            size={28}
-            className="animate-spin text-purple-500"
-          />
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-center">
+          <Zap className="mx-auto mb-4 h-10 w-10" />
 
-          <p className="text-sm text-gray-400">
-            Loading Game Center...
+          <h2 className="text-xl font-semibold">
+            Connect your wallet to play
+          </h2>
+
+          <p className="mt-2 text-sm text-gray-500">
+            Connect your Nimiq wallet to start earning taps
+            and rewards.
           </p>
         </div>
       </div>
     );
   }
 
-  /*
-   * ========================================================
-   * PAGE
-   * ========================================================
-   */
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#08080f] p-6 text-white">
+    <div className="space-y-8 pb-10">
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-yellow-400/10">
+            <Sun className="h-6 w-6 text-yellow-400" />
+          </div>
 
-      {/* HEADER */}
-
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">
-          Game Center
-        </h1>
-
-        <p className="mt-2 text-sm text-gray-400">
-          Tap the Nimiq coin, earn taps,
-          and unlock NFT rewards.
-        </p>
-
-        {isConnected &&
-          walletAddress && (
-            <p className="mt-3 text-xs text-gray-500">
-              Wallet:{" "}
-              <span className="text-gray-300">
-                {shortWallet}
-              </span>
-            </p>
-          )}
-      </div>
-
-      {/* ERROR */}
-
-      {error && (
-        <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-          {error}
-        </div>
-      )}
-
-      {/* SUCCESS */}
-
-      {success && (
-        <div className="mb-6 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-300">
-          {success}
-        </div>
-      )}
-
-      {/* TAP GAME */}
-
-      <div className="mb-8">
-        <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">
-              Tap the Nimiq Coin
-            </h2>
+            <h1 className="text-2xl font-bold">
+              Nimiq Tap Game
+            </h1>
 
-            <p className="text-sm text-gray-400">
-              Every tap increases your total.
+            <p className="text-sm text-gray-500">
+              Tap the coin, reach milestones, and earn NFTs.
             </p>
           </div>
-
-          <div className="text-right">
-            <p className="text-xs text-gray-500">
-              Total taps
-            </p>
-
-            <p className="text-2xl font-bold">
-              {tapCount}
-            </p>
-          </div>
-        </div>
-
-        <div
-          className={`
-            rounded-3xl border border-white/10
-            bg-white/[0.03] p-8 text-center
-            transition-transform duration-100
-            ${
-              isTapping
-                ? "scale-[0.97]"
-                : "hover:bg-white/[0.05]"
-            }
-            ${
-              !user?.id
-                ? "cursor-not-allowed opacity-60"
-                : "cursor-pointer"
-            }
-          `}
-          onClick={handleTap}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(event) => {
-            if (
-              event.key === "Enter" ||
-              event.key === " "
-            ) {
-              event.preventDefault();
-              handleTap();
-            }
-          }}
-          aria-label="Tap the Nimiq coin"
-        >
-          <div className="relative mx-auto flex h-28 w-28 items-center justify-center">
-            <Sun
-              size={100}
-              className="text-purple-500/60"
-            />
-
-            <Zap
-              size={45}
-              className={`
-                absolute text-yellow-400
-                transition-opacity duration-100
-                ${
-                  isTapping
-                    ? "opacity-100"
-                    : "opacity-0"
-                }
-              `}
-            />
-          </div>
-
-          <p className="mt-5 text-xl font-bold">
-            {user?.id
-              ? "Tap"
-              : "Connect wallet to play"}
-          </p>
-
-          {isTapping && (
-            <p className="mt-2 text-sm text-purple-400">
-              +1 tap
-            </p>
-          )}
         </div>
       </div>
 
-      {/* TAP BALANCE */}
+      {/* Tap Game */}
+      <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="text-center">
+          <p className="text-sm text-gray-500">
+            Your taps
+          </p>
 
-      <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-        <div className="mb-5 flex items-center justify-between">
-          <span className="text-gray-300">
-            Tap Balance
-          </span>
+          <h2 className="mt-2 text-4xl font-bold">
+            {tapCount.toLocaleString()}
+          </h2>
 
-          <p className="text-2xl font-bold">
-            {tapCount} taps
+          <p className="mt-2 text-sm text-gray-500">
+            Keep tapping to unlock NFT rewards.
+          </p>
+
+          <button
+            type="button"
+            onClick={handleTap}
+            disabled={isTapping}
+            className="mx-auto mt-8 flex h-36 w-36 items-center justify-center rounded-full border-8 border-yellow-400/30 bg-yellow-400/10 shadow-lg transition-transform duration-100 active:scale-90 disabled:opacity-70"
+          >
+            {isTapping ? (
+              <Loader2 className="h-12 w-12 animate-spin text-yellow-400" />
+            ) : (
+              <Sun className="h-16 w-16 text-yellow-400" />
+            )}
+          </button>
+
+          <p className="mt-5 text-sm text-gray-500">
+            Tap the Nimiq coin
+          </p>
+        </div>
+      </section>
+
+      {/* NFT Milestones */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold">
+            NFT Milestones
+          </h2>
+
+          <p className="text-sm text-gray-500">
+            Reach the required number of taps to unlock each NFT.
           </p>
         </div>
 
-        <div className="space-y-3">
-          {MILESTONE_LEVELS.map(
-            (milestone) => {
-              const alreadyClaimed =
-                hasClaimedReward(
-                  milestone.level
-                );
+        <div className="grid gap-4 md:grid-cols-3">
+          {MILESTONE_LEVELS.map((milestone) => {
+            const claimed = hasClaimedReward(
+              milestone.level
+            );
 
-              const unlocked =
-                tapCount >=
-                milestone.tapsRequired;
+            const unlocked =
+              tapCount >= milestone.tapsRequired;
 
-              return (
-                <div
-                  key={milestone.level}
-                  className={`
-                    flex items-center gap-3
-                    rounded-xl border
-                    border-white/5 p-3
-                    ${
-                      unlocked &&
-                      !alreadyClaimed
-                        ? "bg-purple-500/5"
-                        : ""
-                    }
-                  `}
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-600/10 text-sm font-medium text-purple-400">
-                    {milestone.level}
+            const progress = getProgress(milestone);
+
+            const remaining =
+              getRemainingTaps(milestone);
+
+            return (
+              <div
+                key={milestone.level}
+                className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">
+                    Level {milestone.level}
                   </span>
 
-                  <div className="flex-1">
-                    <p className="font-medium">
-                      Level{" "}
-                      {milestone.level}
-                    </p>
-
-                    <p className="text-xs text-gray-400">
-                      {
-                        milestone.tapsRequired
-                      }{" "}
-                      taps •{" "}
-                      {milestone.reward}
-                    </p>
-                  </div>
-
-                  {alreadyClaimed ? (
-                    <span className="text-xs text-gray-500">
+                  {claimed && (
+                    <span className="rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-500">
                       Claimed
                     </span>
-                  ) : unlocked ? (
-                    <button
-                      onClick={() =>
-                        claimReward(
-                          milestone.level
-                        )
-                      }
-                      className="rounded-xl bg-purple-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-purple-700"
-                    >
-                      Claim
-                    </button>
-                  ) : (
-                    <span className="text-xs text-gray-500">
-                      Locked
+                  )}
+
+                  {!claimed && unlocked && (
+                    <span className="rounded-full bg-yellow-400/10 px-3 py-1 text-xs font-medium text-yellow-500">
+                      Unlocked
                     </span>
                   )}
                 </div>
-              );
-            }
-          )}
-        </div>
-      </div>
 
-      {/* BUY TAPS */}
+                <h3 className="mt-4 text-lg font-semibold">
+                  {milestone.reward}
+                </h3>
 
-      <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-        <div className="mb-5">
-          <h2 className="text-xl font-bold">
-            Buy Taps
-          </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {milestone.tapsRequired.toLocaleString()} taps
+                </p>
 
-          <p className="mt-1 text-sm text-gray-400">
-            Purchase additional taps using
-            NIM.
-          </p>
-        </div>
+                {/* Progress */}
+                <div className="mt-5">
+                  <div className="mb-2 flex justify-between text-xs text-gray-500">
+                    <span>
+                      {tapCount.toLocaleString()} taps
+                    </span>
 
-        {!isConnected ||
-        !walletAddress ? (
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6 text-center">
-            <p className="text-sm text-gray-400">
-              Connect your Nimiq wallet
-              to buy taps.
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* BALANCE */}
+                    <span>
+                      {milestone.tapsRequired.toLocaleString()}
+                    </span>
+                  </div>
 
-            <div className="mb-5 flex items-center justify-between rounded-xl bg-white/[0.03] p-4">
-              <span className="text-sm text-gray-400">
-                NIM Balance
-              </span>
-
-              <span className="font-semibold">
-                {(balance || 0).toFixed(
-                  4
-                )}{" "}
-                NIM
-              </span>
-            </div>
-
-            {/* PACKS */}
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {TAP_PACKS.map(
-                (pack) => {
-                  const affordable =
-                    (balance || 0) >=
-                    pack.price;
-
-                  const purchasing =
-                    buyingPack ===
-                    pack.taps;
-
-                  return (
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
                     <div
-                      key={pack.taps}
-                      className={`
-                        rounded-xl border
-                        border-white/10
-                        bg-white/[0.03] p-5
-                        ${
-                          pack.popular
-                            ? "border-purple-500/30"
-                            : ""
-                        }
-                        ${
-                          !affordable
-                            ? "opacity-60"
-                            : ""
-                        }
-                      `}
-                    >
-                      {pack.popular && (
-                        <span className="mb-3 inline-block rounded-full bg-purple-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-purple-400">
-                          Popular
-                        </span>
-                      )}
+                      className="h-full rounded-full bg-yellow-400 transition-all duration-300"
+                      style={{
+                        width: `${progress}%`,
+                      }}
+                    />
+                  </div>
+                </div>
 
-                      <p className="text-sm text-gray-400">
-                        +{pack.taps} taps
-                      </p>
+                {/* Claim */}
+                {!claimed && unlocked && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      claimReward(milestone)
+                    }
+                    disabled={
+                      claimingLevel === milestone.level
+                    }
+                    className="mt-5 w-full rounded-xl bg-yellow-400 px-4 py-3 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {claimingLevel === milestone.level ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Claiming...
+                      </span>
+                    ) : (
+                      "Claim NFT"
+                    )}
+                  </button>
+                )}
 
-                      <p className="mt-1 text-xl font-bold">
-                        {pack.price} NIM
-                      </p>
+                {/* Locked */}
+                {!claimed && !unlocked && (
+                  <p className="mt-5 text-center text-xs text-gray-500">
+                    {remaining.toLocaleString()} more taps
+                    to unlock
+                  </p>
+                )}
 
-                      <button
-                        onClick={() =>
-                          handleBuyTapPack(
-                            pack
-                          )
-                        }
-                        disabled={
-                          !affordable ||
-                          buyingPack !==
-                            null
-                        }
-                        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 py-3 font-medium text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {purchasing ? (
-                          <>
-                            <Loader2
-                              size={16}
-                              className="animate-spin"
-                            />
-                            Processing...
-                          </>
-                        ) : affordable ? (
-                          "Purchase"
-                        ) : (
-                          "Insufficient NIM"
-                        )}
-                      </button>
-                    </div>
-                  );
-                }
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* STATISTICS */}
-
-      <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-        <h2 className="mb-4 text-xl font-bold">
-          Statistics
-        </h2>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-sm text-gray-400">
-              Total taps
-            </p>
-
-            <p className="text-2xl font-bold">
-              {tapCount}
-            </p>
-          </div>
-
-          <div>
-            <p className="text-sm text-gray-400">
-              Games played
-            </p>
-
-            <p className="text-2xl font-bold">
-              —
-            </p>
-          </div>
-
-          <div>
-            <p className="text-sm text-gray-400">
-              Avg taps/game
-            </p>
-
-            <p className="text-2xl font-bold">
-              —
-            </p>
-          </div>
-
-          <div>
-            <p className="text-sm text-gray-400">
-              Best streak
-            </p>
-
-            <p className="text-2xl font-bold">
-              —
-            </p>
-          </div>
+                {/* Claimed */}
+                {claimed && (
+                  <p className="mt-5 text-center text-xs text-green-500">
+                    Reward already claimed.
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
-      {/* LEADERBOARD */}
-
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+      {/* Leaderboard */}
+      <section>
         <div className="mb-4">
-          <h2 className="text-xl font-bold">
+          <h2 className="text-xl font-semibold">
             Leaderboard
           </h2>
 
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="text-sm text-gray-500">
             Top players by total taps.
           </p>
         </div>
 
-        {loadingLeaderboard ? (
-          <div className="flex min-h-[160px] items-center justify-center gap-3">
-            <Loader2
-              size={20}
-              className="animate-spin text-purple-500"
-            />
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+          {leaderboard.length === 0 ? (
+            <div className="p-6 text-center text-sm text-gray-500">
+              No players yet.
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200 dark:divide-gray-800">
+              {leaderboard.map((player, index) => {
+                const name =
+                  player.username ||
+                  player.display_name ||
+                  "Nimiq Player";
 
-            <p className="text-sm text-gray-400">
-              Loading leaderboard...
-            </p>
-          </div>
-        ) : errorLeaderboard ? (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-6 text-center">
-            <p className="text-sm text-red-400">
-              {errorLeaderboard}
-            </p>
+                return (
+                  <div
+                    key={player.id}
+                    className="flex items-center justify-between px-5 py-4"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold dark:bg-gray-800">
+                        {index + 1}
+                      </div>
 
-            <button
-              onClick={
-                loadLeaderboard
-              }
-              className="mt-3 text-xs text-gray-400 underline"
-            >
-              Try again
-            </button>
-          </div>
-        ) : leaderboard.length ===
-          0 ? (
-          <div className="py-10 text-center">
-            <p className="text-gray-400">
-              No leaderboard data
-              available.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {leaderboard.map(
-              (entry, index) => (
-                <div
-                  key={entry.id}
-                  className={`
-                    flex items-center gap-3
-                    rounded-xl border
-                    border-white/10
-                    bg-white/[0.03] p-4
-                    ${
-                      entry.id ===
-                      user?.id
-                        ? "border-purple-500/30 bg-purple-500/5"
-                        : ""
-                    }
-                  `}
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-600/10 text-sm font-bold text-purple-400">
-                    {index + 1}
-                  </span>
+                      <div>
+                        <p className="font-medium">
+                          {name}
+                        </p>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">
-                      {entry.username}
+                        {player.id === user.id && (
+                          <p className="text-xs text-yellow-500">
+                            You
+                          </p>
+                        )}
+                      </div>
+                    </div>
 
-                      {entry.id ===
-                        user?.id && (
-                        <span className="ml-2 text-xs text-purple-400">
-                          You
-                        </span>
-                      )}
-                    </p>
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Zap className="h-4 w-4 text-yellow-400" />
 
-                    <p className="text-xs text-gray-400">
-                      {
-                        entry.tap_count
-                      }{" "}
-                      taps
-                    </p>
+                      {Number(
+                        player.tap_count ?? 0
+                      ).toLocaleString()}
+                    </div>
                   </div>
-                </div>
-              )
-            )}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
