@@ -11,9 +11,11 @@ import { useNavigate } from "react-router-dom";
 
 import {
   initNimiq,
+  getNimiqAccount,
   fetchNimiqBalance,
   getConsensusStatus,
   getBlockHeight,
+  clearNimiqProvider,
 } from "../lib/nimiq";
 
 import {
@@ -29,50 +31,267 @@ export function WalletProvider({ children }) {
 
   const [nimiq, setNimiq] = useState(null);
   const [walletAddress, setWalletAddress] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(true);
+
+  const [isConnected, setIsConnected] =
+    useState(false);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [isInitializing, setIsInitializing] =
+    useState(true);
 
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [balance, setBalance] = useState(0);
-  const [consensus, setConsensus] = useState(false);
-  const [blockNumber, setBlockNumber] = useState(null);
-  const [error, setError] = useState(null);
 
-  // ================= FETCH BALANCE =================
+  const [balance, setBalance] =
+    useState(0);
 
-  const refreshBalance = useCallback(async (targetAddress) => {
-    if (!targetAddress) return;
+  const [consensus, setConsensus] =
+    useState(false);
 
-    try {
-      const bal = await fetchNimiqBalance(targetAddress);
-      setBalance(bal);
-    } catch (err) {
-      console.warn("Error refreshing balance:", err);
-    }
-  }, []);
+  const [blockNumber, setBlockNumber] =
+    useState(null);
 
-  // ================= FETCH NETWORK =================
+  const [error, setError] =
+    useState(null);
 
-  const refreshNetwork = useCallback(async (provider) => {
-    if (!provider) return;
+  // =====================================================
+  // FETCH TESTNET BALANCE
+  // =====================================================
 
-    try {
-      const isCons = await getConsensusStatus(provider);
-      setConsensus(Boolean(isCons));
-
-      const height = await getBlockHeight(provider);
-
-      if (height !== null) {
-        setBlockNumber(height);
+  const refreshBalance = useCallback(
+    async (targetAddress) => {
+      if (!targetAddress) {
+        setBalance(0);
+        return 0;
       }
-    } catch (err) {
-      console.warn("Error refreshing network status:", err);
-    }
-  }, []);
 
-  // ================= RESTORE SESSION =================
+      try {
+        const bal =
+          await fetchNimiqBalance(
+            targetAddress
+          );
+
+        setBalance(bal);
+
+        return bal;
+      } catch (err) {
+        console.warn(
+          "Error refreshing Testnet balance:",
+          err
+        );
+
+        setBalance(0);
+
+        return 0;
+      }
+    },
+    []
+  );
+
+  // =====================================================
+  // FETCH NIMIQ NETWORK STATUS
+  // =====================================================
+
+  const refreshNetwork = useCallback(
+    async (provider) => {
+      if (!provider) {
+        return;
+      }
+
+      try {
+        const isCons =
+          await getConsensusStatus(
+            provider
+          );
+
+        setConsensus(
+          Boolean(isCons)
+        );
+
+        const height =
+          await getBlockHeight(
+            provider
+          );
+
+        if (height !== null) {
+          setBlockNumber(height);
+        }
+      } catch (err) {
+        console.warn(
+          "Error refreshing network status:",
+          err
+        );
+      }
+    },
+    []
+  );
+
+  // =====================================================
+  // CONNECT TO NIMIQ PAY
+  // =====================================================
+
+  const connectWallet = useCallback(
+    async () => {
+      if (loading) {
+        return null;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        // -----------------------------------------------
+        // 1. Initialize Nimiq Pay
+        // -----------------------------------------------
+
+        const provider =
+          nimiq ||
+          (await initNimiq({
+            timeout: 10_000,
+          }));
+
+        if (!provider) {
+          throw new Error(
+            "Nimiq wallet provider could not be initialized."
+          );
+        }
+
+        setNimiq(provider);
+
+        // -----------------------------------------------
+        // 2. Get the REAL wallet account
+        // -----------------------------------------------
+
+        const address =
+          await getNimiqAccount(
+            provider
+          );
+
+        if (!address) {
+          throw new Error(
+            "No Nimiq wallet account is connected."
+          );
+        }
+
+        console.log(
+          "Connected Nimiq wallet:",
+          address
+        );
+
+        // -----------------------------------------------
+        // 3. Store wallet connection
+        // -----------------------------------------------
+
+        setWalletAddress(address);
+        setIsConnected(true);
+
+        localStorage.setItem(
+          "nimiq_wallet",
+          address
+        );
+
+        // -----------------------------------------------
+        // 4. Authenticate marketplace user
+        // -----------------------------------------------
+
+        const {
+          user: authUser,
+          profile: authProfile,
+        } =
+          await loginWithWallet(
+            address
+          );
+
+        setUser(authUser);
+        setProfile(authProfile);
+
+        // -----------------------------------------------
+        // 5. Get TESTNET balance
+        // -----------------------------------------------
+
+        await refreshBalance(
+          address
+        );
+
+        // -----------------------------------------------
+        // 6. Refresh network
+        // -----------------------------------------------
+
+        await refreshNetwork(
+          provider
+        );
+
+        // -----------------------------------------------
+        // 7. Go to dashboard
+        // -----------------------------------------------
+
+        navigate(
+          "/dashboard",
+          {
+            replace: true,
+          }
+        );
+
+        return address;
+      } catch (err) {
+        console.error(
+          "Nimiq wallet connection error:",
+          err
+        );
+
+        const message =
+          err?.message?.toLowerCase() ||
+          "";
+
+        let friendlyMessage =
+          err?.message ||
+          "Failed to connect Nimiq wallet.";
+
+        if (
+          message.includes("reject") ||
+          message.includes("cancel") ||
+          message.includes("denied")
+        ) {
+          friendlyMessage =
+            "Wallet connection was cancelled.";
+        }
+
+        setError(
+          friendlyMessage
+        );
+
+        setWalletAddress(null);
+        setIsConnected(false);
+        setBalance(0);
+
+        localStorage.removeItem(
+          "nimiq_wallet"
+        );
+
+        throw new Error(
+          friendlyMessage,
+          {
+            cause: err,
+          }
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      loading,
+      nimiq,
+      navigate,
+      refreshBalance,
+      refreshNetwork,
+    ]
+  );
+
+  // =====================================================
+  // RESTORE SESSION
+  // =====================================================
 
   useEffect(() => {
     let mounted = true;
@@ -81,91 +300,163 @@ export function WalletProvider({ children }) {
       try {
         setIsInitializing(true);
 
-        const savedAddress =
-          localStorage.getItem("nimiq_wallet");
+        // -----------------------------------------------
+        // Get Supabase session
+        // -----------------------------------------------
 
         const {
           session,
           user: existingUser,
           profile: existingProfile,
-        } = await getCurrentSession();
+        } =
+          await getCurrentSession();
 
-        if (!mounted) return;
-
-        // Restore saved wallet.
-        if (savedAddress) {
-          setWalletAddress(savedAddress);
-          setIsConnected(true);
-
-          await refreshBalance(savedAddress);
+        if (!mounted) {
+          return;
         }
 
-        // Restore Supabase session.
-        if (session && existingUser) {
-          setUser(existingUser);
-          setProfile(existingProfile);
-
-          const profileAddress =
-            existingProfile?.wallet_address;
-
-          if (!savedAddress && profileAddress) {
-            setWalletAddress(profileAddress);
-            setIsConnected(true);
-
-            localStorage.setItem(
-              "nimiq_wallet",
-              profileAddress
-            );
-
-            await refreshBalance(profileAddress);
-          }
-        }
-
-        // Restore marketplace account if wallet exists
-        // but the Supabase session is missing.
         if (
-          mounted &&
-          savedAddress &&
-          (!existingUser || !existingProfile)
+          session &&
+          existingUser
         ) {
-          try {
-            const {
-              user: restoredUser,
-              profile: restoredProfile,
-            } = await loginWithWallet(savedAddress);
+          setUser(
+            existingUser
+          );
 
-            if (mounted) {
-              setUser(restoredUser);
-              setProfile(restoredProfile);
-              setError(null);
+          setProfile(
+            existingProfile
+          );
+        }
+
+        // -----------------------------------------------
+        // Try to initialize Nimiq Pay
+        // -----------------------------------------------
+
+        let provider = null;
+
+        try {
+          provider =
+            await initNimiq({
+              timeout: 4000,
+            });
+        } catch (providerError) {
+          console.log(
+            "Nimiq Pay is not available:",
+            providerError?.message
+          );
+        }
+
+        if (!mounted) {
+          return;
+        }
+
+        if (provider) {
+          setNimiq(provider);
+
+          // ---------------------------------------------
+          // IMPORTANT:
+          // Do NOT trust localStorage as the wallet.
+          //
+          // Get the account directly from Nimiq Pay.
+          // ---------------------------------------------
+
+          try {
+            const address =
+              await getNimiqAccount(
+                provider
+              );
+
+            if (
+              address &&
+              mounted
+            ) {
+              setWalletAddress(
+                address
+              );
+
+              setIsConnected(
+                true
+              );
+
+              localStorage.setItem(
+                "nimiq_wallet",
+                address
+              );
+
+              // -----------------------------------------
+              // Fetch Testnet balance
+              // -----------------------------------------
+
+              await refreshBalance(
+                address
+              );
+
+              // -----------------------------------------
+              // Restore marketplace auth
+              // -----------------------------------------
+
+              if (
+                !existingUser
+              ) {
+                try {
+                  const {
+                    user: restoredUser,
+                    profile:
+                      restoredProfile,
+                  } =
+                    await loginWithWallet(
+                      address
+                    );
+
+                  if (mounted) {
+                    setUser(
+                      restoredUser
+                    );
+
+                    setProfile(
+                      restoredProfile
+                    );
+                  }
+                } catch (
+                  authError
+                ) {
+                  console.warn(
+                    "Could not restore marketplace session:",
+                    authError
+                  );
+                }
+              }
             }
-          } catch (restoreError) {
-            console.error(
-              "Marketplace session restore error:",
-              restoreError
+          } catch (walletError) {
+            console.log(
+              "No active Nimiq wallet account:",
+              walletError?.message
             );
 
             if (mounted) {
-              setError(
-                restoreError.message ||
-                  "Wallet connected, but the marketplace session could not be restored."
+              setWalletAddress(
+                null
+              );
+
+              setIsConnected(
+                false
+              );
+
+              setBalance(0);
+
+              localStorage.removeItem(
+                "nimiq_wallet"
               );
             }
           }
-        }
 
-        // Initialize Nimiq provider.
-        try {
-          const provider = await initNimiq({
-            timeout: 4000,
-          });
+          // ---------------------------------------------
+          // Network information
+          // ---------------------------------------------
 
-          if (mounted && provider) {
-            setNimiq(provider);
-            await refreshNetwork(provider);
-          }
-        } catch {
-          // Expected outside Nimiq Pay.
+          await refreshNetwork(
+            provider
+          );
         }
       } catch (err) {
         console.warn(
@@ -174,7 +465,9 @@ export function WalletProvider({ children }) {
         );
       } finally {
         if (mounted) {
-          setIsInitializing(false);
+          setIsInitializing(
+            false
+          );
         }
       }
     }
@@ -184,208 +477,143 @@ export function WalletProvider({ children }) {
     return () => {
       mounted = false;
     };
-  }, [refreshBalance, refreshNetwork]);
+  }, [
+    refreshBalance,
+    refreshNetwork,
+  ]);
 
-  // ================= CONNECT WALLET =================
+  // =====================================================
+  // GET CURRENT WALLET ADDRESS
+  // =====================================================
 
-  const connectWallet = async () => {
-    if (loading) return null;
+  const getWalletAddress = useCallback(
+    () => {
+      return walletAddress;
+    },
+    [walletAddress]
+  );
 
-    setLoading(true);
-    setError(null);
+  // =====================================================
+  // DISCONNECT WALLET
+  // =====================================================
 
-    try {
-      // 1. Initialize Nimiq.
-      const provider =
-        nimiq ||
-        (await initNimiq({
-          timeout: 10000,
-        }));
+  const disconnectWallet =
+    useCallback(
+      async () => {
+        setLoading(true);
 
-      if (!provider) {
-        throw new Error(
-          "Nimiq wallet provider could not be initialized."
-        );
-      }
+        try {
+          // ---------------------------------------------
+          // Logout marketplace account
+          // ---------------------------------------------
 
-      if (!nimiq) {
-        setNimiq(provider);
-      }
+          try {
+            await logoutUser();
+          } catch (err) {
+            console.warn(
+              "Logout error:",
+              err
+            );
+          }
 
-      // 2. Get selected wallet account.
-      const accounts =
-        await provider.listAccounts();
+          // ---------------------------------------------
+          // Clear Nimiq provider cache
+          // ---------------------------------------------
 
-      if (!Array.isArray(accounts)) {
-        throw new Error(
-          accounts?.error?.message ||
-            "Nimiq Pay could not provide an account."
-        );
-      }
+          clearNimiqProvider();
 
-      const address = accounts[0]?.trim();
+          // ---------------------------------------------
+          // Clear local wallet state
+          // ---------------------------------------------
 
-      if (!address) {
-        throw new Error(
-          "No Nimiq wallet account was selected."
-        );
-      }
+          localStorage.removeItem(
+            "nimiq_wallet"
+          );
 
-      // Wallet is connected.
-      setWalletAddress(address);
-      setIsConnected(true);
+          setNimiq(null);
+          setWalletAddress(null);
+          setIsConnected(false);
 
-      localStorage.setItem(
-        "nimiq_wallet",
-        address
-      );
+          setUser(null);
+          setProfile(null);
 
-      // 3. Authenticate/provision marketplace account.
-      const {
-        user: authUser,
-        profile: authProfile,
-      } = await loginWithWallet(address);
+          setBalance(0);
+          setConsensus(false);
+          setBlockNumber(null);
 
-      setUser(authUser);
-      setProfile(authProfile);
+          setError(null);
 
-      // 4. Refresh wallet information.
-      await refreshBalance(address);
-      await refreshNetwork(provider);
+          // ---------------------------------------------
+          // Return to wallet page
+          // ---------------------------------------------
 
-      // 5. Everything succeeded.
-      // Send the user to the dashboard.
-      navigate("/dashboard", {
-        replace: true,
-      });
-
-      return address;
-    } catch (err) {
-      console.error(
-        "Nimiq wallet connection error:",
-        err
-      );
-
-      const message =
-        err?.message?.toLowerCase() || "";
-
-      let userFriendlyError =
-        err?.message ||
-        "Failed to connect Nimiq wallet.";
-
-      if (
-        message.includes("reject") ||
-        message.includes("cancel") ||
-        message.includes("denied")
-      ) {
-        userFriendlyError =
-          "Wallet connection was cancelled.";
-      }
-
-      setError(userFriendlyError);
-
-      // Only clear the wallet when the connection
-      // itself did not succeed.
-      if (!err?.walletConnected) {
-        setWalletAddress(null);
-        setIsConnected(false);
-        setUser(null);
-        setProfile(null);
-
-        localStorage.removeItem(
-          "nimiq_wallet"
-        );
-      }
-
-      throw new Error(
-        userFriendlyError,
-        {
-          cause: err,
+          navigate(
+            "/login",
+            {
+              replace: true,
+            }
+          );
+        } finally {
+          setLoading(false);
         }
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ================= GET CURRENT WALLET =================
-
-  const getWalletAddress = () => {
-    return walletAddress;
-  };
-
-  // ================= DISCONNECT =================
-
-  const disconnectWallet = async () => {
-    try {
-      nimiq?.disconnect();
-    } catch (err) {
-      console.warn(
-        "Nimiq provider disconnect error:",
-        err
-      );
-    }
-
-    try {
-      await logoutUser();
-    } catch (err) {
-      console.warn(
-        "Logout error:",
-        err
-      );
-    }
-
-    localStorage.removeItem(
-      "nimiq_wallet"
+      },
+      [navigate]
     );
 
-    setWalletAddress(null);
-    setIsConnected(false);
-    setUser(null);
-    setProfile(null);
-    setBalance(0);
-    setConsensus(false);
-    setBlockNumber(null);
-    setError(null);
-
-    // Return to wallet/login page after disconnecting.
-    navigate("/login", {
-      replace: true,
-    });
-  };
-
-  // ================= CONTEXT VALUE =================
+  // =====================================================
+  // CONTEXT VALUE
+  // =====================================================
 
   const value = {
+    // Provider
     nimiq,
+
+    // Wallet
     walletAddress,
     isConnected,
+
+    // State
     loading,
     isInitializing,
     error,
+
+    // Supabase
     user,
     profile,
+
+    // Testnet
     balance,
     consensus,
     blockNumber,
+
+    // Actions
     connectWallet,
     getWalletAddress,
     disconnectWallet,
+
+    // Refresh
     refreshBalance,
     refreshNetwork,
   };
 
   return (
-    <WalletContext.Provider value={value}>
+    <WalletContext.Provider
+      value={value}
+    >
       {children}
     </WalletContext.Provider>
   );
 }
 
-// ================= HOOK =================
+// =======================================================
+// HOOK
+// =======================================================
 
 export function useWallet() {
-  const context = useContext(WalletContext);
+  const context =
+    useContext(
+      WalletContext
+    );
 
   if (!context) {
     throw new Error(
