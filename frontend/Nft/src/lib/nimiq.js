@@ -3,7 +3,8 @@ import { init } from "@nimiq/mini-app-sdk";
 
 export const LUNA_PER_NIM = 100_000;
 
-// Nimiq Testnet / TestAlbatross RPC
+// This RPC is ONLY used for reading Testnet blockchain data.
+// It does NOT switch Nimiq Pay to Testnet.
 export const TESTNET_RPC =
   "https://rpc.pos.nimiq-testnet.com";
 
@@ -13,20 +14,18 @@ let cachedProvider = null;
  * Initialize the Nimiq Pay provider.
  *
  * IMPORTANT:
+ * The wallet network is controlled by Nimiq Pay.
+ *
+ * To use Testnet:
+ * Nimiq Pay -> Dev Menu -> Testnet
+ *
  * The Mini App SDK does not switch the wallet network.
- * The Nimiq Pay wallet itself must be running on Testnet.
  */
 export async function initNimiq(
   options = { timeout: 10_000 }
 ) {
   if (cachedProvider) {
     return cachedProvider;
-  }
-
-  if (!isNimiqEnvironment()) {
-    throw new Error(
-      "Nimiq Pay is not available. Open this app inside Nimiq Pay."
-    );
   }
 
   try {
@@ -48,49 +47,35 @@ export async function initNimiq(
     );
 
     throw new Error(
-      "Nimiq Pay provider is not available. Make sure the app is opened inside Nimiq Pay.",
+      "Nimiq Pay provider is not available. Open this app inside Nimiq Pay.",
       { cause: error }
     );
   }
 }
 
 /**
- * Clear the cached provider.
- *
- * Useful when the wallet session changes.
+ * Clear cached provider.
  */
 export function clearNimiqProvider() {
   cachedProvider = null;
 }
 
 /**
- * Check whether the app is running inside Nimiq Pay.
- */
-export function isNimiqEnvironment() {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  return Boolean(
-    window.nimiq ||
-    window.nimiqPay
-  );
-}
-
-/**
- * Get the currently connected Nimiq account.
+ * Get the connected Nimiq account.
  *
- * The returned address comes directly from Nimiq Pay.
+ * This comes directly from Nimiq Pay.
  */
-export async function getNimiqAccount(
-  provider
-) {
-  const nimiq = provider || await initNimiq();
+export async function getNimiqAccount(provider) {
+  const nimiq =
+    provider || await initNimiq();
 
   const accounts =
     await nimiq.listAccounts();
 
-  if (!accounts || accounts.length === 0) {
+  if (
+    !accounts ||
+    accounts.length === 0
+  ) {
     throw new Error(
       "No Nimiq wallet account is connected."
     );
@@ -102,26 +87,41 @@ export async function getNimiqAccount(
 /**
  * Get all connected Nimiq accounts.
  */
-export async function getNimiqAccounts(
-  provider
-) {
-  const nimiq = provider || await initNimiq();
+export async function getNimiqAccounts(provider) {
+  const nimiq =
+    provider || await initNimiq();
 
   const accounts =
     await nimiq.listAccounts();
 
-  return (accounts || []).map(cleanAddress);
+  return (accounts || []).map(
+    cleanAddress
+  );
+}
+
+/**
+ * Clean a Nimiq address.
+ */
+export function cleanAddress(address) {
+  if (!address) {
+    return "";
+  }
+
+  return String(address)
+    .replace(/\s+/g, "")
+    .toUpperCase();
 }
 
 /**
  * Format a Nimiq address.
  */
 export function formatNimiqAddress(address) {
-  if (!address) {
+  const cleaned =
+    cleanAddress(address);
+
+  if (!cleaned) {
     return "";
   }
-
-  const cleaned = cleanAddress(address);
 
   const parts =
     cleaned.match(/.{1,4}/g);
@@ -139,12 +139,12 @@ export function shortenAddress(
   leadingChars = 4,
   trailingChars = 4
 ) {
-  if (!address) {
-    return "";
-  }
-
   const cleaned =
     cleanAddress(address);
+
+  if (!cleaned) {
+    return "";
+  }
 
   if (
     cleaned.length <=
@@ -159,19 +159,6 @@ export function shortenAddress(
   )}...${cleaned.slice(
     -trailingChars
   )}`;
-}
-
-/**
- * Remove spaces and normalize address.
- */
-export function cleanAddress(address) {
-  if (!address) {
-    return "";
-  }
-
-  return String(address)
-    .replace(/\s+/g, "")
-    .toUpperCase();
 }
 
 /**
@@ -211,7 +198,10 @@ export function lunaToNim(luna) {
 }
 
 /**
- * Make a JSON-RPC request to Nimiq Testnet.
+ * Make a request to the Nimiq Testnet RPC.
+ *
+ * This is read-only blockchain access.
+ * It does NOT control the Nimiq Pay wallet.
  */
 async function testnetRpc(
   method,
@@ -222,7 +212,8 @@ async function testnetRpc(
     {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type":
+          "application/json",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -253,7 +244,7 @@ async function testnetRpc(
 }
 
 /**
- * Get an account directly from Nimiq Testnet.
+ * Get an account from the Nimiq Testnet blockchain.
  */
 export async function getTestnetAccount(
   address
@@ -267,56 +258,19 @@ export async function getTestnetAccount(
     );
   }
 
-  try {
-    const account =
-      await testnetRpc(
-        "getAccountByAddress",
-        [formatted]
-      );
-
-    console.log(
-      "========== NIMIQ TESTNET =========="
+  const account =
+    await testnetRpc(
+      "getAccountByAddress",
+      [formatted]
     );
 
-    console.log(
-      "Network: TestAlbatross"
-    );
-
-    console.log(
-      "RPC:",
-      TESTNET_RPC
-    );
-
-    console.log(
-      "Wallet:",
-      formatted
-    );
-
-    console.log(
-      "Account:",
-      account
-    );
-
-    console.log(
-      "==================================="
-    );
-
-    return account || null;
-  } catch (error) {
-    console.error(
-      "Failed to get Testnet account:",
-      error
-    );
-
-    throw error;
-  }
+  return account || null;
 }
 
 /**
- * Fetch the NIM balance from Testnet.
+ * Get Testnet NIM balance.
  *
- * This intentionally queries the Testnet RPC,
- * not a mainnet API.
+ * This reads the blockchain directly.
  */
 export async function fetchNimiqBalance(
   address
@@ -326,7 +280,9 @@ export async function fetchNimiqBalance(
   }
 
   const account =
-    await getTestnetAccount(address);
+    await getTestnetAccount(
+      address
+    );
 
   if (!account) {
     return 0;
@@ -355,9 +311,7 @@ export async function fetchNimiqBalance(
 }
 
 /**
- * Get the wallet account and its Testnet balance.
- *
- * Useful for the Wallet page.
+ * Get wallet information from Testnet.
  */
 export async function getTestnetWalletInfo(
   provider
@@ -366,70 +320,63 @@ export async function getTestnetWalletInfo(
     provider || await initNimiq();
 
   const address =
-    await getNimiqAccount(nimiq);
+    await getNimiqAccount(
+      nimiq
+    );
 
   const balance =
-    await fetchNimiqBalance(address);
+    await fetchNimiqBalance(
+      address
+    );
 
   return {
     address,
     balance,
     network: "testnet",
-    rpc: TESTNET_RPC,
   };
 }
 
 /**
  * Check Nimiq consensus.
+ *
+ * This comes from the connected Nimiq Pay
+ * provider, so when Nimiq Pay is in Testnet
+ * mode this represents Testnet consensus.
  */
 export async function getConsensusStatus(
   provider
 ) {
-  try {
-    const nimiq =
-      provider || await initNimiq();
+  const nimiq =
+    provider || await initNimiq();
 
-    return Boolean(
-      await nimiq.isConsensusEstablished()
-    );
-  } catch (error) {
-    console.error(
-      "Consensus check failed:",
-      error
-    );
-
-    return false;
-  }
+  return Boolean(
+    await nimiq.isConsensusEstablished()
+  );
 }
 
 /**
- * Get current block height from the
- * connected Nimiq Pay provider.
+ * Get current block height.
+ *
+ * This comes from the connected Nimiq Pay
+ * provider.
  */
 export async function getBlockHeight(
   provider
 ) {
-  try {
-    const nimiq =
-      provider || await initNimiq();
+  const nimiq =
+    provider || await initNimiq();
 
-    return await nimiq.getBlockNumber();
-  } catch (error) {
-    console.error(
-      "Block height request failed:",
-      error
-    );
-
-    return null;
-  }
+  return await nimiq.getBlockNumber();
 }
 
 /**
- * Send NIM through the connected Nimiq Pay wallet.
+ * Send NIM through Nimiq Pay.
  *
- * The wallet itself determines the active
- * Nimiq network. Make sure Nimiq Pay is in
- * Testnet mode before approving the transaction.
+ * IMPORTANT:
+ * The network is controlled by Nimiq Pay.
+ *
+ * If Nimiq Pay is switched to Testnet,
+ * this transaction is a Testnet transaction.
  */
 export async function sendNIMTransaction(
   provider,
@@ -470,7 +417,8 @@ export async function sendNIMTransaction(
     ) {
       return await nimiq
         .sendBasicTransactionWithData({
-          recipient: cleanRecipient,
+          recipient:
+            cleanRecipient,
           value: luna,
           data: data.trim(),
         });
@@ -478,23 +426,27 @@ export async function sendNIMTransaction(
 
     return await nimiq
       .sendBasicTransaction({
-        recipient: cleanRecipient,
+        recipient:
+          cleanRecipient,
         value: luna,
       });
   } catch (error) {
     console.error(
-      "NIM Testnet transaction failed:",
+      "NIM transaction failed:",
       error
     );
 
     const message =
-      error?.message?.toLowerCase() || "";
+      error?.message?.toLowerCase() ||
+      "";
 
     if (
       message.includes("reject") ||
       message.includes("cancel") ||
       message.includes("denied") ||
-      message.includes("permission_denied")
+      message.includes(
+        "permission_denied"
+      )
     ) {
       throw new Error(
         "Transaction was rejected by the user.",
