@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import {
   Wallet as WalletIcon,
@@ -9,6 +8,7 @@ import {
   Loader2,
   RefreshCw,
   X,
+  AlertTriangle,
 } from "lucide-react";
 
 import { useWallet } from "../context/walletContext";
@@ -28,6 +28,7 @@ function Wallet() {
     disconnectWallet,
     profile,
     balance,
+    balanceWarning,
     consensus,
     blockNumber,
     refreshBalance,
@@ -284,6 +285,21 @@ function Wallet() {
             </div>
           </div>
         </div>
+
+        {/* =========================
+            BALANCE DIAGNOSTIC WARNING
+            (distinct from the static testnet notice above —
+            this only appears when refreshBalance actually
+            detected a problem: account not found on testnet,
+            or the RPC call itself failed.)
+        ========================= */}
+
+        {balanceWarning && (
+          <div className="flex items-start gap-3 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-300">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+            <span>{balanceWarning}</span>
+          </div>
+        )}
 
         {/* =========================
             WALLET BALANCE
