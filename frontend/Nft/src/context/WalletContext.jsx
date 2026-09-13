@@ -1,4 +1,3 @@
-
 import {
   createContext,
   useContext,
@@ -12,7 +11,7 @@ import { useNavigate } from "react-router-dom";
 import {
   initNimiq,
   getNimiqAccount,
-  fetchNimiqBalance,
+  fetchNimiqBalanceDetailed,
   getConsensusStatus,
   getBlockHeight,
   clearNimiqProvider,
@@ -56,6 +55,13 @@ export function WalletProvider({ children }) {
   const [error, setError] =
     useState(null);
 
+  // Surfaces WHY the balance is what it is, instead of only ever
+  // showing a number. Distinguishes "confirmed zero" from "account not
+  // found on testnet" (which usually means Nimiq Pay isn't actually on
+  // Testnet right now) from "couldn't reach the RPC at all."
+  const [balanceWarning, setBalanceWarning] =
+    useState(null);
+
   // =====================================================
   // FETCH TESTNET BALANCE
   // =====================================================
@@ -64,25 +70,52 @@ export function WalletProvider({ children }) {
     async (targetAddress) => {
       if (!targetAddress) {
         setBalance(0);
+        setBalanceWarning(null);
         return 0;
       }
 
       try {
-        const bal =
-          await fetchNimiqBalance(
+        const { balance: bal, found } =
+          await fetchNimiqBalanceDetailed(
             targetAddress
           );
 
         setBalance(bal);
 
+        if (!found) {
+          const warning =
+            "This address wasn't found on Nimiq Testnet. " +
+            "Check that Nimiq Pay is actually switched to Testnet " +
+            "(long-press the settings button for 10s -> Dev Menu -> Testnet).";
+
+          console.warn(
+            "[wallet] balance is 0 because the account was NOT FOUND on testnet:",
+            targetAddress
+          );
+
+          setBalanceWarning(warning);
+        } else {
+          setBalanceWarning(null);
+        }
+
         return bal;
       } catch (err) {
-        console.warn(
-          "Error refreshing Testnet balance:",
+        // This is a DIFFERENT failure mode from "not found" — the RPC
+        // call itself blew up (network error, CORS, bad hostname, etc).
+        // Log it loudly and distinctly so it isn't confused with a
+        // genuinely empty wallet.
+        console.error(
+          "[wallet] Testnet RPC call FAILED (not just empty — an actual error):",
           err
         );
 
         setBalance(0);
+
+        setBalanceWarning(
+          `Couldn't reach the Nimiq Testnet RPC: ${
+            err?.message || "unknown error"
+          }`
+        );
 
         return 0;
       }
@@ -265,6 +298,7 @@ export function WalletProvider({ children }) {
         setWalletAddress(null);
         setIsConnected(false);
         setBalance(0);
+        setBalanceWarning(null);
 
         localStorage.removeItem(
           "nimiq_wallet"
@@ -329,7 +363,10 @@ export function WalletProvider({ children }) {
         }
 
         // -----------------------------------------------
-        // Try to initialize Nimiq Pay
+        // Try to detect Nimiq Pay WITHOUT prompting the
+        // user. listAccounts() requires confirmation, so
+        // it must never run automatically on mount — only
+        // use no-confirmation calls here.
         // -----------------------------------------------
 
         let provider = null;
@@ -354,109 +391,35 @@ export function WalletProvider({ children }) {
           setNimiq(provider);
 
           // ---------------------------------------------
-          // IMPORTANT:
-          // Do NOT trust localStorage as the wallet.
-          //
-          // Get the account directly from Nimiq Pay.
-          // ---------------------------------------------
-
-          try {
-            const address =
-              await getNimiqAccount(
-                provider
-              );
-
-            if (
-              address &&
-              mounted
-            ) {
-              setWalletAddress(
-                address
-              );
-
-              setIsConnected(
-                true
-              );
-
-              localStorage.setItem(
-                "nimiq_wallet",
-                address
-              );
-
-              // -----------------------------------------
-              // Fetch Testnet balance
-              // -----------------------------------------
-
-              await refreshBalance(
-                address
-              );
-
-              // -----------------------------------------
-              // Restore marketplace auth
-              // -----------------------------------------
-
-              if (
-                !existingUser
-              ) {
-                try {
-                  const {
-                    user: restoredUser,
-                    profile:
-                      restoredProfile,
-                  } =
-                    await loginWithWallet(
-                      address
-                    );
-
-                  if (mounted) {
-                    setUser(
-                      restoredUser
-                    );
-
-                    setProfile(
-                      restoredProfile
-                    );
-                  }
-                } catch (
-                  authError
-                ) {
-                  console.warn(
-                    "Could not restore marketplace session:",
-                    authError
-                  );
-                }
-              }
-            }
-          } catch (walletError) {
-            console.log(
-              "No active Nimiq wallet account:",
-              walletError?.message
-            );
-
-            if (mounted) {
-              setWalletAddress(
-                null
-              );
-
-              setIsConnected(
-                false
-              );
-
-              setBalance(0);
-
-              localStorage.removeItem(
-                "nimiq_wallet"
-              );
-            }
-          }
-
-          // ---------------------------------------------
-          // Network information
+          // Network information only (no confirmation
+          // dialog). Do NOT call getNimiqAccount()/
+          // listAccounts() here — that would pop a native
+          // approval dialog on every page load with no
+          // user interaction, which is exactly the kind
+          // of silent-failure trap that made "testnet
+          // isn't working" hard to diagnose in the first
+          // place. Restoring a previously-connected wallet
+          // now requires the user to tap "Connect" again;
+          // there is no way around this with the current
+          // SDK, since it exposes no "already granted?"
+          // check.
           // ---------------------------------------------
 
           await refreshNetwork(
             provider
           );
+
+          const storedAddress =
+            localStorage.getItem(
+              "nimiq_wallet"
+            );
+
+          if (storedAddress) {
+            console.log(
+              "A previously connected wallet was found locally, but re-confirming " +
+              "with Nimiq Pay requires the user to tap Connect again."
+            );
+          }
         }
       } catch (err) {
         console.warn(
@@ -478,7 +441,6 @@ export function WalletProvider({ children }) {
       mounted = false;
     };
   }, [
-    refreshBalance,
     refreshNetwork,
   ]);
 
@@ -538,6 +500,7 @@ export function WalletProvider({ children }) {
           setProfile(null);
 
           setBalance(0);
+          setBalanceWarning(null);
           setConsensus(false);
           setBlockNumber(null);
 
@@ -583,6 +546,7 @@ export function WalletProvider({ children }) {
 
     // Testnet
     balance,
+    balanceWarning,
     consensus,
     blockNumber,
 
