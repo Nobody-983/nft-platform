@@ -1,4 +1,4 @@
-import { init } from "https://esm.run/@nimiq/mini-app-sdk";
+import { init } from "@nimiq/mini-app-sdk";
 
 export const LUNA_PER_NIM = 100_000;
 export const DEFAULT_FEE_LUNA = 100;
@@ -8,13 +8,12 @@ export const TESTNET_RPC_CANDIDATES = [
   "https://rpc.pos.nimiq-testnet.com",
 ];
 
+export const TESTNET_RPC = TESTNET_RPC_CANDIDATES[0];
+
 let resolvedTestnetRpc = null;
 let providerPromise = null;
 
-/**
- * Initialize Nimiq Pay provider
- */
-export async function initNimiq(options = { timeout: 10000 }) {
+export async function initNimiq(options = { timeout: 10_000 }) {
   if (providerPromise) return providerPromise;
 
   providerPromise = (async () => {
@@ -24,7 +23,7 @@ export async function initNimiq(options = { timeout: 10000 }) {
       return provider;
     } catch (error) {
       console.error("Failed to initialize Nimiq provider:", error);
-      throw new Error("Nimiq Pay provider not available. Open inside Nimiq Pay.");
+      throw new Error("Nimiq Pay provider is not available.", { cause: error });
     }
   })();
 
@@ -36,51 +35,59 @@ export async function initNimiq(options = { timeout: 10000 }) {
   }
 }
 
-/**
- * Get primary connected account
- */
+// EXPORT 1: clearNimiqProvider
+export function clearNimiqProvider() {
+  providerPromise = null;
+}
+
 export async function getNimiqAccount(provider) {
   const nimiq = provider || (await initNimiq());
   const accounts = await nimiq.listAccounts();
 
   if (!accounts || accounts.length === 0) {
-    throw new Error("No Nimiq account connected.");
+    throw new Error("No Nimiq wallet account is connected.");
   }
 
   return cleanAddress(accounts[0]);
 }
 
-/**
- * Address formatting utilities
- */
 export function cleanAddress(address) {
-  return address ? String(address).replace(/\s+/g, "").toUpperCase() : "";
+  if (!address) return "";
+  return String(address).replace(/\s+/g, "").toUpperCase();
 }
 
-export function shortenAddress(address, leading = 4, trailing = 4) {
+// EXPORT 2: formatNimiqAddress
+export function formatNimiqAddress(address) {
   const cleaned = cleanAddress(address);
-  if (!cleaned || cleaned.length <= leading + trailing) return cleaned;
-  return `${cleaned.slice(0, leading)}...${cleaned.slice(-trailing)}`;
+  if (!cleaned) return "";
+  const parts = cleaned.match(/.{1,4}/g);
+  return parts ? parts.join(" ") : cleaned;
 }
 
-/**
- * Unit conversions (Luna <-> NIM)
- */
+export function shortenAddress(address, leadingChars = 4, trailingChars = 4) {
+  const cleaned = cleanAddress(address);
+  if (!cleaned) return "";
+  if (cleaned.length <= leadingChars + trailingChars) return cleaned;
+  return `${cleaned.slice(0, leadingChars)}...${cleaned.slice(-trailingChars)}`;
+}
+
 export function nimToLuna(nim) {
   const numeric = Number(nim);
-  return !Number.isFinite(numeric) || numeric < 0 ? 0 : Math.round(numeric * LUNA_PER_NIM);
+  if (!Number.isFinite(numeric) || numeric < 0) return 0;
+  return Math.round(numeric * LUNA_PER_NIM);
 }
 
 export function lunaToNim(luna) {
   const numeric = Number(luna);
-  return !Number.isFinite(numeric) || numeric < 0 ? 0 : numeric / LUNA_PER_NIM;
+  if (!Number.isFinite(numeric) || numeric < 0) return 0;
+  return numeric / LUNA_PER_NIM;
 }
 
-/**
- * Testnet JSON-RPC Request Handler
- */
 async function testnetRpc(method, params = []) {
-  const candidates = resolvedTestnetRpc ? [resolvedTestnetRpc] : TESTNET_RPC_CANDIDATES;
+  const candidates = resolvedTestnetRpc
+    ? [resolvedTestnetRpc]
+    : TESTNET_RPC_CANDIDATES;
+
   let lastError = null;
 
   for (const endpoint of candidates) {
@@ -98,51 +105,62 @@ async function testnetRpc(method, params = []) {
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const result = await response.json();
-
       if (result?.error) throw new Error(result.error.message);
 
       resolvedTestnetRpc = endpoint;
       const payload = result?.result;
 
-      return payload && typeof payload === "object" && "data" in payload ? payload.data : payload;
+      if (payload && typeof payload === "object" && "data" in payload) {
+        return payload.data;
+      }
+      return payload;
     } catch (error) {
       lastError = error;
     }
   }
 
-  throw new Error("Could not reach any Nimiq Testnet RPC endpoint.", { cause: lastError });
+  throw new Error("Could not reach Nimiq Testnet RPC endpoint.", { cause: lastError });
 }
 
-/**
- * Fetch detailed balance from Testnet RPC
- */
 export async function fetchNimiqBalanceDetailed(address) {
   if (!address) return { balance: 0, found: false };
-
-  const formatted = cleanAddress(address);
-  const account = await testnetRpc("getAccountByAddress", [formatted]);
+  const account = await testnetRpc("getAccountByAddress", [cleanAddress(address)]).catch(() => null);
 
   if (!account) return { balance: 0, found: false };
-
   const rawBalance = account.balance;
   if (rawBalance === undefined || rawBalance === null) return { balance: 0, found: true };
 
   return { balance: lunaToNim(rawBalance), found: true };
 }
 
-/**
- * Trigger NIM Payment inside Nimiq Pay
- */
+// EXPORT 3: fetchNimiqBalance
+export async function fetchNimiqBalance(address) {
+  const { balance } = await fetchNimiqBalanceDetailed(address);
+  return balance;
+}
+
+// EXPORT 4: getConsensusStatus
+export async function getConsensusStatus(provider) {
+  const nimiq = provider || (await initNimiq());
+  return Boolean(await nimiq.isConsensusEstablished());
+}
+
+// EXPORT 5: getBlockHeight
+export async function getBlockHeight(provider) {
+  const nimiq = provider || (await initNimiq());
+  return await nimiq.getBlockNumber();
+}
+
 export async function sendNIMTransaction(provider, { recipient, valueInNim, data }) {
   const nimiq = provider || (await initNimiq());
   const cleanRecipient = cleanAddress(recipient);
 
-  if (!cleanRecipient.startsWith("NQ")) {
+  if (!cleanRecipient || !cleanRecipient.startsWith("NQ")) {
     throw new Error("Invalid recipient Nimiq address.");
   }
 
   const luna = nimToLuna(valueInNim);
-  if (luna <= 0) throw new Error("Amount must be greater than 0 NIM.");
+  if (luna <= 0) throw new Error("Transaction amount must be greater than 0 NIM.");
 
   if (data && data.trim()) {
     return await nimiq.sendBasicTransactionWithData({
