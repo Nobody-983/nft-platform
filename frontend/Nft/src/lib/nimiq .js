@@ -259,7 +259,23 @@ async function testnetRpc(method, params = []) {
       // This endpoint works — remember it so future calls skip probing.
       resolvedTestnetRpc = endpoint;
 
-      return result?.result;
+      // IMPORTANT: Nimiq's Albatross (PoS) RPC wraps the actual payload
+      // in an envelope: `result: { data: {...}, metadata: {...} }`.
+      // The account/block/etc fields live under `.data`, NOT directly
+      // on `result`. Reading `result.result.balance` (as earlier code
+      // did) silently returns `undefined` for every call, which looks
+      // exactly like "found the account but it has 0 balance" — a false
+      // signal that wastes a lot of debugging time. Unwrap `.data` here
+      // once, centrally, so every caller gets the real payload. Fall
+      // back to the raw result for any future/older RPC method that
+      // doesn't use the envelope.
+      const payload = result?.result;
+
+      if (payload && typeof payload === "object" && "data" in payload) {
+        return payload.data;
+      }
+
+      return payload;
     } catch (error) {
       lastError = error;
       console.warn(`Nimiq Testnet RPC candidate failed (${endpoint}):`, error?.message);
