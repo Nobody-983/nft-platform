@@ -41,10 +41,12 @@ export function WalletProvider({ children }) {
   const [consensus, setConsensus] = useState(false);
   const [blockNumber, setBlockNumber] = useState(null);
   const [error, setError] = useState(null);
+
+  // Surfaces diagnostic warnings when the account is unindexed or unreachable
   const [balanceWarning, setBalanceWarning] = useState(null);
 
   // =====================================================
-  // FETCH TESTNET BALANCE (FIXED)
+  // FETCH BALANCE & HANDLE WARNINGS
   // =====================================================
 
   const refreshBalance = useCallback(async (targetAddress) => {
@@ -55,23 +57,36 @@ export function WalletProvider({ children }) {
     }
 
     try {
-      const { balance: bal } = await fetchNimiqBalanceDetailed(targetAddress);
+      const { balance: bal, found } = await fetchNimiqBalanceDetailed(
+        targetAddress
+      );
 
-      // Successfully queried balance (0 or higher)
       setBalance(bal || 0);
-      setBalanceWarning(null);
+
+      if (!found) {
+        const warning =
+          "This address was not found on the RPC node. " +
+          "If this is a new wallet on Mainnet/Testnet, you need to receive funds first, " +
+          "or check that Nimiq Pay is on the correct network.";
+
+        console.warn(
+          "[wallet] Account not found on RPC node:",
+          targetAddress
+        );
+
+        setBalanceWarning(warning);
+      } else {
+        setBalanceWarning(null);
+      }
+
       return bal || 0;
     } catch (err) {
-      // Only set warning if the RPC endpoint network request fails
-      console.error(
-        "[wallet] Testnet RPC call FAILED:",
-        err
-      );
+      console.error("[wallet] RPC call FAILED:", err);
 
       setBalance(0);
       setBalanceWarning(
-        `Couldn't reach the Nimiq Testnet RPC: ${
-          err?.message || "network error"
+        `Couldn't reach the Nimiq RPC endpoint: ${
+          err?.message || "unknown network error"
         }`
       );
 
@@ -131,7 +146,8 @@ export function WalletProvider({ children }) {
       setIsConnected(true);
       localStorage.setItem("nimiq_wallet", address);
 
-      const { user: authUser, profile: authProfile } = await loginWithWallet(address);
+      const { user: authUser, profile: authProfile } =
+        await loginWithWallet(address);
       setUser(authUser);
       setProfile(authProfile);
 
