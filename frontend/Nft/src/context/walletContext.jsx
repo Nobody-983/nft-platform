@@ -1,3 +1,4 @@
+
 import {
   createContext,
   useContext,
@@ -31,6 +32,7 @@ export function WalletProvider({ children }) {
   const [nimiq, setNimiq] = useState(null);
   const [walletAddress, setWalletAddress] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -40,13 +42,12 @@ export function WalletProvider({ children }) {
   const [balance, setBalance] = useState(0);
   const [consensus, setConsensus] = useState(false);
   const [blockNumber, setBlockNumber] = useState(null);
-  const [error, setError] = useState(null);
 
-  // Surfaces diagnostic warnings when the account is unindexed or unreachable
+  const [error, setError] = useState(null);
   const [balanceWarning, setBalanceWarning] = useState(null);
 
   // =====================================================
-  // FETCH BALANCE & HANDLE WARNINGS
+  // REFRESH BALANCE
   // =====================================================
 
   const refreshBalance = useCallback(async (targetAddress) => {
@@ -57,37 +58,39 @@ export function WalletProvider({ children }) {
     }
 
     try {
-      const { balance: bal, found } = await fetchNimiqBalanceDetailed(
-        targetAddress
-      );
+      /*
+       * Balance lookup is handled by nimiq.js.
+       *
+       * IMPORTANT:
+       * The wallet network itself is controlled by Nimiq Pay.
+       * We do NOT use an RPC URL here to force Testnet/Mainnet.
+       */
+      const result = await fetchNimiqBalanceDetailed(targetAddress);
 
-      setBalance(bal || 0);
+      const nextBalance = Number(result?.balance ?? 0);
 
-      if (!found) {
-        const warning =
-          "This address was not found on the RPC node. " +
-          "If this is a new wallet on Mainnet/Testnet, you need to receive funds first, " +
-          "or check that Nimiq Pay is on the correct network.";
+      setBalance(nextBalance);
 
-        console.warn(
-          "[wallet] Account not found on RPC node:",
-          targetAddress
+      /*
+       * "Not found" is treated only as a balance lookup problem.
+       * It does NOT mean that Nimiq Pay is on the wrong network.
+       */
+      if (result?.found === false) {
+        setBalanceWarning(
+          "The wallet address could not be resolved by the balance service."
         );
-
-        setBalanceWarning(warning);
       } else {
         setBalanceWarning(null);
       }
 
-      return bal || 0;
+      return nextBalance;
     } catch (err) {
-      console.error("[wallet] RPC call FAILED:", err);
+      console.error("[wallet] Balance lookup failed:", err);
 
       setBalance(0);
+
       setBalanceWarning(
-        `Couldn't reach the Nimiq RPC endpoint: ${
-          err?.message || "unknown network error"
-        }`
+        err?.message || "Unable to retrieve the wallet balance."
       );
 
       return 0;
@@ -95,27 +98,29 @@ export function WalletProvider({ children }) {
   }, []);
 
   // =====================================================
-  // FETCH NIMIQ NETWORK STATUS
+  // REFRESH NETWORK
   // =====================================================
 
   const refreshNetwork = useCallback(async (provider) => {
     if (!provider) return;
 
     try {
-      const isCons = await getConsensusStatus(provider);
-      setConsensus(Boolean(isCons));
+      const isConsistent = await getConsensusStatus(provider);
+
+      setConsensus(Boolean(isConsistent));
 
       const height = await getBlockHeight(provider);
-      if (height !== null) {
+
+      if (height !== null && height !== undefined) {
         setBlockNumber(height);
       }
     } catch (err) {
-      console.warn("Error refreshing network status:", err);
+      console.warn("[wallet] Network status failed:", err);
     }
   }, []);
 
   // =====================================================
-  // CONNECT TO NIMIQ PAY
+  // CONNECT WALLET
   // =====================================================
 
   const connectWallet = useCallback(async () => {
@@ -125,6 +130,10 @@ export function WalletProvider({ children }) {
     setError(null);
 
     try {
+      /*
+       * Nimiq Pay determines the active network.
+       * We simply initialize the injected provider.
+       */
       const provider =
         nimiq ||
         (await initNimiq({
@@ -132,57 +141,91 @@ export function WalletProvider({ children }) {
         }));
 
       if (!provider) {
-        throw new Error("Nimiq wallet provider could not be initialized.");
+        throw new Error(
+          "Nimiq Pay wallet provider could not be initialized."
+        );
       }
 
       setNimiq(provider);
 
+      // Get the account from Nimiq Pay.
       const address = await getNimiqAccount(provider);
+
       if (!address) {
-        throw new Error("No Nimiq wallet account is connected.");
+        throw new Error(
+          "No Nimiq wallet account is connected."
+        );
       }
 
       setWalletAddress(address);
       setIsConnected(true);
+
       localStorage.setItem("nimiq_wallet", address);
 
-      const { user: authUser, profile: authProfile } =
-        await loginWithWallet(address);
+      // Authenticate the wallet address with Supabase.
+      const {
+        user: authUser,
+        profile: authProfile,
+      } = await loginWithWallet(address);
+
       setUser(authUser);
       setProfile(authProfile);
 
+      // Read wallet data.
       await refreshBalance(address);
       await refreshNetwork(provider);
 
-      navigate("/dashboard", { replace: true });
+      navigate("/dashboard", {
+        replace: true,
+      });
 
       return address;
     } catch (err) {
-      console.error("Nimiq wallet connection error:", err);
+      console.error(
+        "[wallet] Nimiq connection failed:",
+        err
+      );
 
-      const message = err?.message?.toLowerCase() || "";
-      let friendlyMessage = err?.message || "Failed to connect Nimiq wallet.";
+      const message =
+        err?.message?.toLowerCase() || "";
+
+      let friendlyMessage =
+        err?.message ||
+        "Failed to connect Nimiq wallet.";
 
       if (
         message.includes("reject") ||
         message.includes("cancel") ||
         message.includes("denied")
       ) {
-        friendlyMessage = "Wallet connection was cancelled.";
+        friendlyMessage =
+          "Wallet connection was cancelled.";
       }
 
       setError(friendlyMessage);
+
+      setNimiq(null);
       setWalletAddress(null);
       setIsConnected(false);
+
       setBalance(0);
       setBalanceWarning(null);
+
       localStorage.removeItem("nimiq_wallet");
 
-      throw new Error(friendlyMessage, { cause: err });
+      throw new Error(friendlyMessage, {
+        cause: err,
+      });
     } finally {
       setLoading(false);
     }
-  }, [loading, nimiq, navigate, refreshBalance, refreshNetwork]);
+  }, [
+    loading,
+    nimiq,
+    navigate,
+    refreshBalance,
+    refreshNetwork,
+  ]);
 
   // =====================================================
   // RESTORE SESSION
@@ -195,8 +238,11 @@ export function WalletProvider({ children }) {
       try {
         setIsInitializing(true);
 
-        const { session, user: existingUser, profile: existingProfile } =
-          await getCurrentSession();
+        const {
+          session,
+          user: existingUser,
+          profile: existingProfile,
+        } = await getCurrentSession();
 
         if (!mounted) return;
 
@@ -206,20 +252,52 @@ export function WalletProvider({ children }) {
         }
 
         let provider = null;
+
         try {
-          provider = await initNimiq({ timeout: 4000 });
+          /*
+           * Again, we do not select a network here.
+           * Nimiq Pay controls whether this provider is
+           * connected to Mainnet or Testnet.
+           */
+          provider = await initNimiq({
+            timeout: 4_000,
+          });
         } catch (providerError) {
-          console.log("Nimiq Pay is not available:", providerError?.message);
+          console.log(
+            "[wallet] Nimiq Pay unavailable:",
+            providerError?.message
+          );
         }
 
         if (!mounted) return;
 
         if (provider) {
           setNimiq(provider);
+
+          const address =
+            await getNimiqAccount(provider);
+
+          if (!mounted) return;
+
+          if (address) {
+            setWalletAddress(address);
+            setIsConnected(true);
+
+            localStorage.setItem(
+              "nimiq_wallet",
+              address
+            );
+
+            await refreshBalance(address);
+          }
+
           await refreshNetwork(provider);
         }
       } catch (err) {
-        console.warn("Session restore error:", err);
+        console.warn(
+          "[wallet] Session restore failed:",
+          err
+        );
       } finally {
         if (mounted) {
           setIsInitializing(false);
@@ -232,9 +310,16 @@ export function WalletProvider({ children }) {
     return () => {
       mounted = false;
     };
-  }, [refreshNetwork]);
+  }, [refreshBalance, refreshNetwork]);
 
-  const getWalletAddress = useCallback(() => walletAddress, [walletAddress]);
+  // =====================================================
+  // GET WALLET ADDRESS
+  // =====================================================
+
+  const getWalletAddress = useCallback(
+    () => walletAddress,
+    [walletAddress]
+  );
 
   // =====================================================
   // DISCONNECT WALLET
@@ -247,45 +332,68 @@ export function WalletProvider({ children }) {
       try {
         await logoutUser();
       } catch (err) {
-        console.warn("Logout error:", err);
+        console.warn(
+          "[wallet] Logout failed:",
+          err
+        );
       }
 
       clearNimiqProvider();
+
       localStorage.removeItem("nimiq_wallet");
 
       setNimiq(null);
       setWalletAddress(null);
       setIsConnected(false);
+
       setUser(null);
       setProfile(null);
+
       setBalance(0);
       setBalanceWarning(null);
+
       setConsensus(false);
       setBlockNumber(null);
+
       setError(null);
 
-      navigate("/login", { replace: true });
+      navigate("/login", {
+        replace: true,
+      });
     } finally {
       setLoading(false);
     }
   }, [navigate]);
 
+  // =====================================================
+  // CONTEXT VALUE
+  // =====================================================
+
   const value = {
     nimiq,
+
     walletAddress,
     isConnected,
+
     loading,
     isInitializing,
-    error,
+
     user,
     profile,
+
     balance,
     balanceWarning,
+
     consensus,
     blockNumber,
+
+    error,
+
     connectWallet,
-    getWalletAddress,
     disconnectWallet,
+
+    getWalletAddress,
+
     refreshBalance,
     refreshNetwork,
   };
@@ -297,10 +405,18 @@ export function WalletProvider({ children }) {
   );
 }
 
+// =====================================================
+// HOOK
+// =====================================================
+
 export function useWallet() {
   const context = useContext(WalletContext);
+
   if (!context) {
-    throw new Error("useWallet must be used inside WalletProvider");
+    throw new Error(
+      "useWallet must be used inside WalletProvider"
+    );
   }
+
   return context;
 }
