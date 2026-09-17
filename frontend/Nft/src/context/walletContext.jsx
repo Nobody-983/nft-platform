@@ -45,33 +45,6 @@ const [error, setError] = useState(null);
 const [balanceWarning, setBalanceWarning] = useState(null);
 
 // =====================================================
-// GET ADDRESS FROM NIMIQ PAY
-// =====================================================
-
-const getProviderAddress = useCallback(async (provider) => {
-if (!provider) {
-throw new Error(
-"Nimiq Pay wallet provider is not available."
-);
-}
-
-
-const accounts = await provider.listAccounts();
-
-const address = accounts?.[0]?.trim();
-
-if (!address) {
-  throw new Error(
-    "No Nimiq wallet account is connected."
-  );
-}
-
-return address;
-
-
-}, []);
-
-// =====================================================
 // REFRESH BALANCE
 // =====================================================
 
@@ -104,7 +77,7 @@ try {
 
   return nextBalance;
 } catch (err) {
-  console.error(
+  console.warn(
     "[wallet] Balance lookup failed:",
     err
   );
@@ -131,10 +104,10 @@ if (!provider) return;
 
 
 try {
-  const isConsistent =
+  const established =
     await getConsensusStatus(provider);
 
-  setConsensus(Boolean(isConsistent));
+  setConsensus(Boolean(established));
 
   const height =
     await getBlockHeight(provider);
@@ -167,6 +140,10 @@ setLoading(true);
 setError(null);
 
 try {
+  // -----------------------------------------------
+  // 1. Initialize Nimiq Pay
+  // -----------------------------------------------
+
   const provider =
     nimiq ||
     (await initNimiq({
@@ -181,9 +158,48 @@ try {
 
   setNimiq(provider);
 
-  // Get the wallet address directly from Nimiq Pay.
+  console.log(
+    "[wallet] Nimiq provider initialized"
+  );
+
+  // -----------------------------------------------
+  // 2. Get wallet address
+  // -----------------------------------------------
+
+  const accounts =
+    await provider.listAccounts();
+
+  console.log(
+    "[wallet] Nimiq accounts:",
+    accounts
+  );
+
+  if (
+    !Array.isArray(accounts) ||
+    accounts.length === 0
+  ) {
+    throw new Error(
+      "No Nimiq wallet account is connected."
+    );
+  }
+
   const address =
-    await getProviderAddress(provider);
+    accounts[0]?.trim();
+
+  if (!address) {
+    throw new Error(
+      "Nimiq Pay returned an empty wallet address."
+    );
+  }
+
+  console.log(
+    "[wallet] Wallet address:",
+    address
+  );
+
+  // -----------------------------------------------
+  // 3. Store wallet state
+  // -----------------------------------------------
 
   setWalletAddress(address);
   setIsConnected(true);
@@ -193,45 +209,56 @@ try {
     address
   );
 
-  // Keep the existing Supabase wallet authentication.
+  // -----------------------------------------------
+  // 4. Authenticate with Supabase
+  // -----------------------------------------------
+
+  console.log(
+    "[wallet] Authenticating wallet..."
+  );
+
   const {
     user: authUser,
     profile: authProfile,
   } = await loginWithWallet(address);
 
+  console.log(
+    "[wallet] Wallet authentication complete"
+  );
+
   setUser(authUser);
   setProfile(authProfile);
 
-  /*
-   * Balance is secondary.
-   * A balance failure must NOT prevent login
-   * or dashboard navigation.
-   */
-  try {
-    await refreshBalance(address);
-  } catch (balanceError) {
-    console.warn(
-      "[wallet] Balance refresh failed:",
-      balanceError
-    );
-  }
+  // -----------------------------------------------
+  // 5. Navigate immediately
+  // -----------------------------------------------
 
-  /*
-   * Network information is also secondary.
-   * A network-status failure must not prevent login.
-   */
-  try {
-    await refreshNetwork(provider);
-  } catch (networkError) {
-    console.warn(
-      "[wallet] Network refresh failed:",
-      networkError
-    );
-  }
+  console.log(
+    "[wallet] Navigating to dashboard..."
+  );
 
-  // Navigate after successful wallet authentication.
+  setLoading(false);
+
   navigate("/dashboard", {
     replace: true,
+  });
+
+  // -----------------------------------------------
+  // 6. Background blockchain information
+  // -----------------------------------------------
+
+  refreshBalance(address).catch((err) => {
+    console.warn(
+      "[wallet] Background balance refresh failed:",
+      err
+    );
+  });
+
+  refreshNetwork(provider).catch((err) => {
+    console.warn(
+      "[wallet] Background network refresh failed:",
+      err
+    );
   });
 
   return address;
@@ -282,7 +309,6 @@ try {
 loading,
 nimiq,
 navigate,
-getProviderAddress,
 refreshBalance,
 refreshNetwork,
 ]);
@@ -325,42 +351,54 @@ async function restoreSession() {
       );
     }
 
-    if (!mounted) return;
+    if (!mounted || !provider) {
+      return;
+    }
 
-    if (provider) {
-      setNimiq(provider);
+    setNimiq(provider);
 
-      try {
-        const address =
-          await getProviderAddress(provider);
+    try {
+      const accounts =
+        await provider.listAccounts();
 
-        if (!mounted) return;
+      const address =
+        accounts?.[0]?.trim();
 
-        if (address) {
-          setWalletAddress(address);
-          setIsConnected(true);
+      if (!mounted) return;
 
-          localStorage.setItem(
-            "nimiq_wallet",
-            address
-          );
+      if (address) {
+        setWalletAddress(address);
+        setIsConnected(true);
 
-          /*
-           * Balance restoration is secondary.
-           */
-          await refreshBalance(address);
-        }
-      } catch (walletError) {
-        console.warn(
-          "[wallet] Wallet address restore failed:",
-          walletError
+        localStorage.setItem(
+          "nimiq_wallet",
+          address
+        );
+
+        refreshBalance(address).catch(
+          (err) => {
+            console.warn(
+              "[wallet] Restore balance failed:",
+              err
+            );
+          }
         );
       }
-
-      if (mounted) {
-        await refreshNetwork(provider);
-      }
+    } catch (walletError) {
+      console.warn(
+        "[wallet] Wallet restore failed:",
+        walletError
+      );
     }
+
+    refreshNetwork(provider).catch(
+      (err) => {
+        console.warn(
+          "[wallet] Restore network failed:",
+          err
+        );
+      }
+    );
   } catch (err) {
     console.warn(
       "[wallet] Session restore failed:",
@@ -381,7 +419,6 @@ return () => {
 
 
 }, [
-getProviderAddress,
 refreshBalance,
 refreshNetwork,
 ]);
