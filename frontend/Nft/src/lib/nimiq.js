@@ -115,8 +115,9 @@ export async function getNimiqAccounts(provider) {
  * becomes:
  * NQ00 0000 0000 0000 0000 0000 0000 0000 00
  *
- * This is also the "user-friendly address" format the Nimiq
- * JSON-RPC server expects and returns — see formatForRpc().
+ * This is also the "user-friendly address" format that both the
+ * Nimiq Pay provider (sendBasicTransaction, etc.) and the JSON-RPC
+ * server expect — see formatForProvider() / formatForRpc().
  */
 export function formatNimiqAddress(address) {
   const cleaned = cleanAddress(address);
@@ -131,15 +132,15 @@ export function formatNimiqAddress(address) {
 }
 
 /**
- * Prepare an address for a Nimiq JSON-RPC call.
+ * Prepare an address for a Nimiq Pay provider call
+ * (sendBasicTransaction, sendBasicTransactionWithData, etc.).
  *
- * The RPC expects the spaced "user-friendly address" format
- * (e.g. "NQ76 X6N0 6AYX 10A3 679A AY77 9US6 QT3M NKMN"), not
- * the compressed form used internally throughout this app.
- * Sending the compressed form causes the node to report the
- * address as unresolvable.
+ * The official Mini App SDK docs show recipient addresses in the
+ * spaced "user-friendly" format (e.g. "NQ07 0000 0000 0000 0000
+ * 0000 0000 0000 0000"), not the compressed form used internally
+ * throughout this app.
  */
-function formatForRpc(address) {
+function formatForProvider(address) {
   const cleaned = cleanAddress(address);
 
   if (!isValidNimiqAddress(cleaned)) {
@@ -147,6 +148,19 @@ function formatForRpc(address) {
   }
 
   return formatNimiqAddress(cleaned);
+}
+
+/**
+ * Prepare an address for a Nimiq JSON-RPC call.
+ *
+ * Sent in the same spaced "user-friendly address" format as the
+ * provider (see formatForProvider). NOTE: this alone did not
+ * resolve the "could not be resolved" balance error reported
+ * against the live RPC endpoint — the real cause there is still
+ * unconfirmed pending actual RPC response data.
+ */
+function formatForRpc(address) {
+  return formatForProvider(address);
 }
 
 /**
@@ -415,11 +429,9 @@ export async function getBlockHeight(provider) {
 export async function sendNIMTransaction(provider, { recipient, valueInNim, data }) {
   const nimiq = provider || (await initNimiq());
 
-  const cleanRecipient = cleanAddress(recipient);
-
-  if (!isValidNimiqAddress(cleanRecipient)) {
-    throw new Error("Invalid recipient Nimiq address.");
-  }
+  // Officially documented recipient format for sendBasicTransaction /
+  // sendBasicTransactionWithData is the spaced user-friendly address.
+  const providerRecipient = formatForProvider(recipient);
 
   const luna = nimToLuna(valueInNim);
 
@@ -430,14 +442,14 @@ export async function sendNIMTransaction(provider, { recipient, valueInNim, data
   try {
     if (typeof data === "string" && data.trim()) {
       return await nimiq.sendBasicTransactionWithData({
-        recipient: cleanRecipient,
+        recipient: providerRecipient,
         value: luna,
         data: data.trim(),
       });
     }
 
     return await nimiq.sendBasicTransaction({
-      recipient: cleanRecipient,
+      recipient: providerRecipient,
       value: luna,
     });
   } catch (error) {
