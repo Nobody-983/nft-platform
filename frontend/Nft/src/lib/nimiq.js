@@ -300,3 +300,5 @@ balanceLuna - DEFAULT_FEE_LUNA
 
 return lunaToNim(sendableLuna);
 }
+export const cleanAddress = cleanNimiqAddress;
+export const shortenAddress = shortenNimiqAddress;
