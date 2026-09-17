@@ -1,21 +1,15 @@
-
 import { init } from "@nimiq/mini-app-sdk";
 import initCore, * as NimiqCore from "@nimiq/core/web";
 
 export const LUNA_PER_NIM = 100_000;
-
-// -----------------------------------------------------
-// CONSTANTS
-// -----------------------------------------------------
-
 export const DEFAULT_FEE_LUNA = 100;
 
 let cachedProvider = null;
 let coreClientPromise = null;
 
-// -----------------------------------------------------
+// =====================================================
 // NIMIQ PAY PROVIDER
-// -----------------------------------------------------
+// =====================================================
 
 export async function initNimiq(options = {}) {
   if (cachedProvider) {
@@ -45,9 +39,9 @@ export function clearNimiqProvider() {
   cachedProvider = null;
 }
 
-// -----------------------------------------------------
+// =====================================================
 // NIMIQ TESTNET WEB CLIENT
-// -----------------------------------------------------
+// =====================================================
 
 async function getTestnetClient() {
   if (coreClientPromise) {
@@ -61,9 +55,6 @@ async function getTestnetClient() {
       const config =
         new NimiqCore.ClientConfiguration();
 
-      // IMPORTANT:
-      // This is the Nimiq Web Client network used for
-      // blockchain reads such as account balances.
       config.network("testalbatross");
 
       const client =
@@ -82,8 +73,6 @@ async function getTestnetClient() {
         error
       );
 
-      // Preserve the ORIGINAL error message so it can
-      // be displayed by WalletContext.
       throw new Error(
         error?.message ||
           "Could not connect to the Nimiq Testnet blockchain.",
@@ -95,9 +84,9 @@ async function getTestnetClient() {
   return coreClientPromise;
 }
 
-// -----------------------------------------------------
+// =====================================================
 // ADDRESS HELPERS
-// -----------------------------------------------------
+// =====================================================
 
 export function cleanAddress(address) {
   if (!address || typeof address !== "string") {
@@ -175,9 +164,9 @@ export function shortenAddress(
 export const shortenNimiqAddress =
   shortenAddress;
 
-// -----------------------------------------------------
+// =====================================================
 // WALLET ACCOUNT
-// -----------------------------------------------------
+// =====================================================
 
 export async function getNimiqAccount(
   provider
@@ -235,17 +224,15 @@ export async function getNimiqAccounts(
   return accounts;
 }
 
-// -----------------------------------------------------
+// =====================================================
 // NIM / LUNA CONVERSION
-// -----------------------------------------------------
+// =====================================================
 
 export function nimToLuna(value) {
   const nim = Number(value);
 
   if (!Number.isFinite(nim)) {
-    throw new Error(
-      "Invalid NIM amount."
-    );
+    throw new Error("Invalid NIM amount.");
   }
 
   return Math.round(
@@ -278,18 +265,17 @@ export function getMaxSendableNim(
 ) {
   const balanceLuna = nimToLuna(balance);
 
-  const sendableLuna =
-    Math.max(
-      0,
-      balanceLuna - DEFAULT_FEE_LUNA
-    );
+  const sendableLuna = Math.max(
+    0,
+    balanceLuna - DEFAULT_FEE_LUNA
+  );
 
   return lunaToNim(sendableLuna);
 }
 
-// -----------------------------------------------------
+// =====================================================
 // TESTNET BALANCE
-// -----------------------------------------------------
+// =====================================================
 
 export async function fetchNimiqBalanceDetailed(
   address
@@ -344,9 +330,7 @@ export async function fetchNimiqBalanceDetailed(
     return {
       balance:
         balanceLuna / LUNA_PER_NIM,
-
       found: true,
-
       error: null,
     };
   } catch (error) {
@@ -355,9 +339,8 @@ export async function fetchNimiqBalanceDetailed(
       error
     );
 
-    // IMPORTANT:
-    // Return the REAL error instead of hiding it.
-    // WalletContext reads result.error and displays it.
+    // Keep the actual blockchain/client error.
+    // WalletContext displays this through balanceWarning.
     return {
       balance: 0,
       found: false,
@@ -379,9 +362,9 @@ export async function fetchNimiqBalance(
   return result.balance;
 }
 
-// -----------------------------------------------------
+// =====================================================
 // NETWORK STATUS
-// -----------------------------------------------------
+// =====================================================
 
 export async function getConsensusStatus(
   provider
@@ -423,9 +406,9 @@ export async function getBlockHeight(
   }
 }
 
-// -----------------------------------------------------
+// =====================================================
 // TESTNET WALLET INFORMATION
-// -----------------------------------------------------
+// =====================================================
 
 export async function getTestnetWalletInfo(
   address
@@ -444,9 +427,9 @@ export async function getTestnetWalletInfo(
   };
 }
 
-// -----------------------------------------------------
+// =====================================================
 // SEND NIM TRANSACTION
-// -----------------------------------------------------
+// =====================================================
 
 export async function sendNIMTransaction(
   provider,
@@ -528,14 +511,4 @@ export async function sendNIMTransaction(
       { cause: error }
     );
   }
-}
-
-
-catch (error) {
-  return {
-    balance: 0,
-    found: false,
-    error: error?.message ||
-      "Unable to retrieve the Nimiq Testnet balance.",
-  };
 }
