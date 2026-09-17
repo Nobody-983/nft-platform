@@ -181,11 +181,7 @@ try {
 
   setNimiq(provider);
 
-  /*
-   * IMPORTANT:
-   * The address comes from Nimiq Pay's provider.
-   * We do not pass the provider into getNimiqAccount().
-   */
+  // Get the wallet address directly from Nimiq Pay.
   const address =
     await getProviderAddress(provider);
 
@@ -197,7 +193,7 @@ try {
     address
   );
 
-  // Authenticate the wallet address with Supabase.
+  // Keep the existing Supabase wallet authentication.
   const {
     user: authUser,
     profile: authProfile,
@@ -206,10 +202,34 @@ try {
   setUser(authUser);
   setProfile(authProfile);
 
-  // Read blockchain data after the address exists.
-  await refreshBalance(address);
-  await refreshNetwork(provider);
+  /*
+   * Balance is secondary.
+   * A balance failure must NOT prevent login
+   * or dashboard navigation.
+   */
+  try {
+    await refreshBalance(address);
+  } catch (balanceError) {
+    console.warn(
+      "[wallet] Balance refresh failed:",
+      balanceError
+    );
+  }
 
+  /*
+   * Network information is also secondary.
+   * A network-status failure must not prevent login.
+   */
+  try {
+    await refreshNetwork(provider);
+  } catch (networkError) {
+    console.warn(
+      "[wallet] Network refresh failed:",
+      networkError
+    );
+  }
+
+  // Navigate after successful wallet authentication.
   navigate("/dashboard", {
     replace: true,
   });
@@ -310,29 +330,36 @@ async function restoreSession() {
     if (provider) {
       setNimiq(provider);
 
-      /*
-       * Get the actual wallet address from
-       * Nimiq Pay, not from the blockchain
-       * balance client.
-       */
-      const address =
-        await getProviderAddress(provider);
+      try {
+        const address =
+          await getProviderAddress(provider);
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (address) {
-        setWalletAddress(address);
-        setIsConnected(true);
+        if (address) {
+          setWalletAddress(address);
+          setIsConnected(true);
 
-        localStorage.setItem(
-          "nimiq_wallet",
-          address
+          localStorage.setItem(
+            "nimiq_wallet",
+            address
+          );
+
+          /*
+           * Balance restoration is secondary.
+           */
+          await refreshBalance(address);
+        }
+      } catch (walletError) {
+        console.warn(
+          "[wallet] Wallet address restore failed:",
+          walletError
         );
-
-        await refreshBalance(address);
       }
 
-      await refreshNetwork(provider);
+      if (mounted) {
+        await refreshNetwork(provider);
+      }
     }
   } catch (err) {
     console.warn(
