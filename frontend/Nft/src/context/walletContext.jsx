@@ -1,4 +1,3 @@
-
 import {
   createContext,
   useContext,
@@ -66,9 +65,6 @@ export function WalletProvider({ children }) {
 
       setBalance(nextBalance);
 
-      // IMPORTANT:
-      // Keep the actual Testnet/blockchain error so
-      // Wallet.jsx can display it to the user.
       if (result?.found === false) {
         setBalanceWarning(
           result?.error ||
@@ -114,8 +110,6 @@ export function WalletProvider({ children }) {
         setBlockNumber(height);
       }
     } catch (err) {
-      // Keep the network error visible instead of
-      // silently losing it.
       setBalanceWarning(
         err?.message ||
           "Unable to retrieve the Nimiq Testnet network status."
@@ -203,13 +197,13 @@ export function WalletProvider({ children }) {
       setProfile(authProfile);
 
       // -----------------------------------------------
-      // 5. Check Testnet balance BEFORE navigation
+      // 5. Testnet balance check
       // -----------------------------------------------
 
       await refreshBalance(address);
 
       // -----------------------------------------------
-      // 6. Check Nimiq network status
+      // 6. Testnet network status
       // -----------------------------------------------
 
       await refreshNetwork(provider);
@@ -250,13 +244,15 @@ export function WalletProvider({ children }) {
 
       setBalance(0);
 
-      // IMPORTANT:
-      // Do not erase balanceWarning here.
-      // If the Testnet lookup already produced a useful
-      // error, keep it visible to the user.
-      if (!balanceWarning) {
-        setBalanceWarning(friendlyMessage);
-      }
+      /*
+       * Keep the existing balance/testnet error if one
+       * was already produced.
+       *
+       * We do not clear balanceWarning here.
+       */
+      setBalanceWarning((currentWarning) => {
+        return currentWarning || friendlyMessage;
+      });
 
       localStorage.removeItem(
         "nimiq_wallet"
@@ -274,7 +270,6 @@ export function WalletProvider({ children }) {
     navigate,
     refreshBalance,
     refreshNetwork,
-    balanceWarning,
   ]);
 
   // =====================================================
@@ -351,7 +346,9 @@ export function WalletProvider({ children }) {
           }
         }
 
-        await refreshNetwork(provider);
+        if (mounted) {
+          await refreshNetwork(provider);
+        }
       } catch (err) {
         if (mounted) {
           setBalanceWarning(
@@ -396,8 +393,7 @@ export function WalletProvider({ children }) {
       try {
         await logoutUser();
       } catch {
-        // Logout failure should not prevent local
-        // wallet state from being cleared.
+        // Continue clearing local wallet state.
       }
 
       clearNimiqProvider();
@@ -484,9 +480,3 @@ export function useWallet() {
 
   return context;
 }
-
-{balanceWarning && (
-  <div>
-    {balanceWarning}
-  </div>
-)}
