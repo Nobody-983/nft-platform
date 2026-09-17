@@ -60,6 +60,10 @@ export function clearNimiqProvider() {
 /**
  * Initialize the Nimiq Web Client on TestAlbatross.
  *
+ * IMPORTANT:
+ * "testalbatross" is the network identifier expected
+ * by the Nimiq Web Client configuration.
+ *
  * This client is used for reading Testnet blockchain data,
  * such as account balances.
  *
@@ -77,7 +81,8 @@ async function getTestnetClient() {
       const config =
         new NimiqCore.ClientConfiguration();
 
-      config.network("TestAlbatross");
+      // Testnet network identifier.
+      config.network("testalbatross");
 
       const client =
         await NimiqCore.Client.create(
@@ -95,6 +100,7 @@ async function getTestnetClient() {
         error
       );
 
+      // Keep the actual underlying error.
       throw new Error(
         error?.message ||
           "Could not connect to the Nimiq Testnet blockchain.",
@@ -333,10 +339,8 @@ export function getMaxSendableNim(
 /**
  * Fetch detailed Testnet balance.
  *
- * IMPORTANT:
- * Errors are returned instead of hidden.
- * This allows WalletContext/UI to display the
- * actual reason the balance failed.
+ * Errors are returned instead of hidden so the
+ * WalletContext/UI can display the actual error.
  */
 export async function fetchNimiqBalanceDetailed(
   address
@@ -431,7 +435,7 @@ export async function fetchNimiqBalanceDetailed(
       balanceLuna: 0,
       found: false,
 
-      // KEEP THE REAL ERROR.
+      // Preserve the real error for the UI.
       error:
         error?.message ||
         "Failed to read the Nimiq Testnet balance.",
@@ -481,9 +485,6 @@ export async function getBlockHeight(
 
 /**
  * Get Testnet wallet information.
- *
- * Balance comes from the TestAlbatross
- * Web Client.
  */
 export async function getTestnetWalletInfo(
   provider
@@ -524,6 +525,8 @@ export async function getTestnetWalletInfo(
     found:
       balanceInfo.found,
 
+    // IMPORTANT:
+    // Preserve the balance error.
     balanceError:
       balanceInfo.error,
 
