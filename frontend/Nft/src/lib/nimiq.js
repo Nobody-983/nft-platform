@@ -59,7 +59,9 @@ export function clearNimiqProvider() {
 }
 
 /**
- * Clean a Nimiq address.
+ * Clean a Nimiq address into its compressed internal form
+ * (no spaces, uppercase). Use this for validation, storage,
+ * comparisons and display shortening throughout the app.
  */
 export function cleanAddress(address) {
   if (!address) {
@@ -106,6 +108,15 @@ export async function getNimiqAccounts(provider) {
 
 /**
  * Format a Nimiq address into groups of four characters.
+ *
+ * Example:
+ * NQ00000000000000000000000000000000
+ *
+ * becomes:
+ * NQ00 0000 0000 0000 0000 0000 0000 0000 00
+ *
+ * This is also the "user-friendly address" format the Nimiq
+ * JSON-RPC server expects and returns — see formatForRpc().
  */
 export function formatNimiqAddress(address) {
   const cleaned = cleanAddress(address);
@@ -117,6 +128,25 @@ export function formatNimiqAddress(address) {
   const parts = cleaned.match(/.{1,4}/g);
 
   return parts ? parts.join(" ") : cleaned;
+}
+
+/**
+ * Prepare an address for a Nimiq JSON-RPC call.
+ *
+ * The RPC expects the spaced "user-friendly address" format
+ * (e.g. "NQ76 X6N0 6AYX 10A3 679A AY77 9US6 QT3M NKMN"), not
+ * the compressed form used internally throughout this app.
+ * Sending the compressed form causes the node to report the
+ * address as unresolvable.
+ */
+function formatForRpc(address) {
+  const cleaned = cleanAddress(address);
+
+  if (!isValidNimiqAddress(cleaned)) {
+    throw new Error("Invalid Nimiq wallet address.");
+  }
+
+  return formatNimiqAddress(cleaned);
 }
 
 /**
@@ -231,17 +261,9 @@ async function testnetRpc(method, params = []) {
  * Get an account from Nimiq Testnet.
  */
 export async function getTestnetAccount(address) {
-  const cleanedAddress = cleanAddress(address);
+  const rpcAddress = formatForRpc(address);
 
-  if (!cleanedAddress) {
-    throw new Error("No wallet address provided.");
-  }
-
-  if (!isValidNimiqAddress(cleanedAddress)) {
-    throw new Error("Invalid Nimiq wallet address.");
-  }
-
-  return testnetRpc("getAccountByAddress", [cleanedAddress]);
+  return testnetRpc("getAccountByAddress", [rpcAddress]);
 }
 
 /**
