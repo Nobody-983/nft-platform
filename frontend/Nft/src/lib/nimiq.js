@@ -1,403 +1,439 @@
 import { init } from "@nimiq/mini-app-sdk";
-import initCore, * as NimiqCore from "@nimiq/core/web";
 
 export const LUNA_PER_NIM = 100_000;
+
+// Small safety reserve when calculating "send max".
 export const DEFAULT_FEE_LUNA = 100;
 
-let cachedProvider = null;
-let coreClientPromise = null;
+// Nimiq Testnet RPC endpoints.
+export const TESTNET_RPC_CANDIDATES = [
+  "https://rpc.nimiq-testnet.com",
+  "https://rpc.pos.nimiq-testnet.com",
+];
 
-// =====================================================
-// NIMIQ PAY PROVIDER
-// =====================================================
+let resolvedTestnetRpc = null;
+let providerPromise = null;
 
-export async function initNimiq(options = {}) {
-if (cachedProvider) {
-return cachedProvider;
+/**
+ * Initialize the Nimiq Pay provider.
+ *
+ * The app must be opened inside Nimiq Pay.
+ */
+export async function initNimiq(options = { timeout: 10_000 }) {
+  if (providerPromise) {
+    return providerPromise;
+  }
+
+  providerPromise = (async () => {
+    try {
+      const provider = await init(options);
+
+      if (!provider) {
+        throw new Error("Nimiq provider was not returned.");
+      }
+
+      return provider;
+    } catch (error) {
+      console.error("Nimiq provider initialization failed:", error);
+
+      throw new Error(
+        "Nimiq Pay provider is not available. Open this app inside Nimiq Pay.",
+        { cause: error }
+      );
+    }
+  })();
+
+  try {
+    return await providerPromise;
+  } catch (error) {
+    providerPromise = null;
+    throw error;
+  }
 }
 
-const provider = await init(options);
-
-cachedProvider = provider;
-
-return provider;
-}
-
+/**
+ * Clear the cached provider.
+ */
 export function clearNimiqProvider() {
-cachedProvider = null;
+  providerPromise = null;
 }
 
-// =====================================================
-// GET ACCOUNT FROM NIMIQ PAY
-// =====================================================
+/**
+ * Clean a Nimiq address.
+ */
+export function cleanAddress(address) {
+  if (!address) {
+    return "";
+  }
 
+  return String(address).replace(/\s+/g, "").toUpperCase();
+}
+
+/**
+ * Check whether a string looks like a Nimiq address.
+ */
+export function isValidNimiqAddress(address) {
+  const cleaned = cleanAddress(address);
+
+  return cleaned.startsWith("NQ") && cleaned.length === 36;
+}
+
+/**
+ * Get the first connected Nimiq account.
+ */
 export async function getNimiqAccount(provider) {
-if (!provider) {
-throw new Error(
-"Nimiq Pay wallet provider is not available."
-);
+  const nimiq = provider || (await initNimiq());
+
+  const accounts = await nimiq.listAccounts();
+
+  if (!accounts || accounts.length === 0) {
+    throw new Error("No Nimiq wallet account is connected.");
+  }
+
+  return cleanAddress(accounts[0]);
 }
 
-const accounts = await provider.listAccounts();
+/**
+ * Get every connected Nimiq account.
+ */
+export async function getNimiqAccounts(provider) {
+  const nimiq = provider || (await initNimiq());
 
-if (!Array.isArray(accounts) || accounts.length === 0) {
-throw new Error(
-"No Nimiq wallet account is connected."
-);
+  const accounts = await nimiq.listAccounts();
+
+  return (accounts || []).map(cleanAddress);
 }
 
-const address = accounts[0];
-
-if (!address || typeof address !== "string") {
-throw new Error(
-"Nimiq Pay returned an invalid wallet address."
-);
-}
-
-return address.trim();
-}
-
-// =====================================================
-// ADDRESS HELPERS
-// =====================================================
-
-export function cleanNimiqAddress(address) {
-if (!address || typeof address !== "string") {
-return "";
-}
-
-return address.replace(/\s+/g, "").toUpperCase();
-}
-
+/**
+ * Format a Nimiq address into groups of four characters.
+ */
 export function formatNimiqAddress(address) {
-const cleaned = cleanNimiqAddress(address);
+  const cleaned = cleanAddress(address);
 
-if (!cleaned) {
-return "";
+  if (!cleaned) {
+    return "";
+  }
+
+  const parts = cleaned.match(/.{1,4}/g);
+
+  return parts ? parts.join(" ") : cleaned;
 }
 
-return cleaned.match(/.{1,4}/g)?.join(" ") || cleaned;
+/**
+ * Shorten a Nimiq address for UI display.
+ */
+export function shortenAddress(address, leadingChars = 4, trailingChars = 4) {
+  const cleaned = cleanAddress(address);
+
+  if (!cleaned) {
+    return "";
+  }
+
+  if (cleaned.length <= leadingChars + trailingChars) {
+    return cleaned;
+  }
+
+  return `${cleaned.slice(0, leadingChars)}...${cleaned.slice(-trailingChars)}`;
 }
 
-export function shortenNimiqAddress(address) {
-const cleaned = cleanNimiqAddress(address);
+/**
+ * Convert NIM to Luna.
+ */
+export function nimToLuna(nim) {
+  const numeric = Number(nim);
 
-if (!cleaned) {
-return "";
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return 0;
+  }
+
+  return Math.round(numeric * LUNA_PER_NIM);
 }
 
-if (cleaned.length <= 12) {
-return cleaned;
+/**
+ * Convert Luna to NIM.
+ */
+export function lunaToNim(luna) {
+  const numeric = Number(luna);
+
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return 0;
+  }
+
+  return numeric / LUNA_PER_NIM;
 }
 
-return `${cleaned.slice(0, 8)}...${cleaned.slice(-6)}`;
+/**
+ * Calculate the maximum amount of NIM that can be sent
+ * while keeping the configured fee reserve.
+ */
+export function getMaxSendableNim(balanceInNim, feeInLuna = DEFAULT_FEE_LUNA) {
+  const balanceLuna = nimToLuna(balanceInNim);
+  const availableLuna = balanceLuna - feeInLuna;
+
+  if (availableLuna <= 0) {
+    return 0;
+  }
+
+  return lunaToNim(availableLuna);
 }
 
-// Keep compatibility with the existing wallet.jsx imports.
-export const cleanAddress = cleanNimiqAddress;
-export const shortenAddress = shortenNimiqAddress;
+/**
+ * Perform a JSON-RPC request against Nimiq Testnet.
+ */
+async function testnetRpc(method, params = []) {
+  const endpoints = resolvedTestnetRpc
+    ? [resolvedTestnetRpc]
+    : TESTNET_RPC_CANDIDATES;
 
-// =====================================================
-// VALUE CONVERSION
-// =====================================================
+  let lastError = null;
 
-export function nimToLuna(value) {
-const nim = Number(value);
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: Date.now(),
+          method,
+          params,
+        }),
+      });
 
-if (!Number.isFinite(nim)) {
-return 0;
+      if (!response.ok) {
+        throw new Error(`Testnet RPC returned HTTP ${response.status}.`);
+      }
+
+      const json = await response.json();
+
+      if (json?.error) {
+        throw new Error(json.error.message || "Nimiq Testnet RPC error.");
+      }
+
+      resolvedTestnetRpc = endpoint;
+
+      return json?.result;
+    } catch (error) {
+      lastError = error;
+
+      console.warn(`Testnet RPC failed: ${endpoint}`, error?.message);
+    }
+  }
+
+  throw new Error("Could not connect to any Nimiq Testnet RPC endpoint.", {
+    cause: lastError,
+  });
 }
 
-return Math.round(nim * LUNA_PER_NIM);
+/**
+ * Get an account from Nimiq Testnet.
+ */
+export async function getTestnetAccount(address) {
+  const cleanedAddress = cleanAddress(address);
+
+  if (!cleanedAddress) {
+    throw new Error("No wallet address provided.");
+  }
+
+  if (!isValidNimiqAddress(cleanedAddress)) {
+    throw new Error("Invalid Nimiq wallet address.");
+  }
+
+  return testnetRpc("getAccountByAddress", [cleanedAddress]);
 }
 
-export function lunaToNim(value) {
-const luna = Number(value);
+/**
+ * Get the current Testnet block height directly from the RPC
+ * (independent of whatever network the wallet provider is on).
+ * Used to diagnose a provider/testnet network mismatch.
+ */
+export async function getTestnetBlockNumber() {
+  const result = await testnetRpc("getBlockNumber");
 
-if (!Number.isFinite(luna)) {
-return 0;
+  return typeof result === "number" ? result : null;
 }
 
-return luna / LUNA_PER_NIM;
+/**
+ * Get detailed Testnet balance information.
+ */
+export async function fetchNimiqBalanceDetailed(address) {
+  const cleanedAddress = cleanAddress(address);
+
+  if (!cleanedAddress) {
+    return {
+      balance: 0,
+      found: false,
+    };
+  }
+
+  try {
+    const account = await getTestnetAccount(cleanedAddress);
+
+    /*
+     * An address can exist as a valid Nimiq address
+     * without having an initialized account on-chain.
+     */
+    if (!account) {
+      return {
+        balance: 0,
+        found: true,
+      };
+    }
+
+    const rawBalance = account.balance;
+
+    if (rawBalance === undefined || rawBalance === null) {
+      return {
+        balance: 0,
+        found: true,
+      };
+    }
+
+    const balanceLuna = Number(rawBalance);
+
+    if (!Number.isFinite(balanceLuna)) {
+      throw new Error("Invalid balance returned by Testnet RPC.");
+    }
+
+    return {
+      balance: lunaToNim(balanceLuna),
+      found: true,
+    };
+  } catch (error) {
+    console.warn("Failed to read Nimiq Testnet balance:", error);
+
+    return {
+      balance: 0,
+      found: false,
+    };
+  }
 }
 
-export function formatNim(value) {
-const nim = Number(value);
+/**
+ * Simple balance getter.
+ */
+export async function fetchNimiqBalance(address) {
+  const result = await fetchNimiqBalanceDetailed(address);
 
-if (!Number.isFinite(nim)) {
-return "0.00";
+  return result.balance;
 }
 
-return nim.toFixed(2);
-}
+/**
+ * Check the wallet's Testnet information.
+ *
+ * The provider remains responsible for the actual wallet.
+ * The RPC is used only to read Testnet blockchain data.
+ */
+export async function getTestnetWalletInfo(provider) {
+  const nimiq = provider || (await initNimiq());
 
-// =====================================================
-// NIMIQ WEB CLIENT
-// =====================================================
+  const address = await getNimiqAccount(nimiq);
 
-async function getCoreClient() {
-if (!coreClientPromise) {
-coreClientPromise = (async () => {
-await initCore();
+  const [balanceInfo, providerBlockNumber] = await Promise.all([
+    fetchNimiqBalanceDetailed(address),
+    getBlockHeight(nimiq).catch(() => null),
+  ]);
 
+  let networkWarning = null;
 
-  const config =
-    new NimiqCore.ClientConfiguration();
+  if (providerBlockNumber !== null) {
+    try {
+      const testnetBlockNumber = await getTestnetBlockNumber();
 
-  config.network("TestAlbatross");
+      if (
+        typeof testnetBlockNumber === "number" &&
+        Math.abs(testnetBlockNumber - providerBlockNumber) > 10_000
+      ) {
+        networkWarning =
+          "The Nimiq Pay provider appears to be on a different network than Testnet.";
+      }
+    } catch (error) {
+      console.warn(
+        "Could not compare provider and Testnet block heights:",
+        error
+      );
+    }
+  }
 
-  const client =
-    await NimiqCore.Client.create(
-      config.build()
-    );
-
-  await client.waitForConsensusEstablished();
-
-  return client;
-})();
-
-
-}
-
-return coreClientPromise;
-}
-
-// =====================================================
-// ACCOUNT / BALANCE
-// =====================================================
-
-export async function fetchNimiqBalanceDetailed(
-address
-) {
-const cleanedAddress =
-cleanNimiqAddress(address);
-
-if (!cleanedAddress) {
-return {
-balance: 0,
-balanceLuna: 0,
-found: false,
-error: "A Nimiq wallet address is required.",
-};
-}
-
-try {
-const client = await getCoreClient();
-
-
-const account =
-  await client.getAccount(
-    cleanedAddress
-  );
-
-if (!account) {
   return {
-    balance: 0,
-    balanceLuna: 0,
-    found: false,
+    address,
+    balance: balanceInfo.balance,
+    found: balanceInfo.found,
+    network: "testnet",
+    networkWarning,
   };
 }
 
-const balanceLuna =
-  Number(account.balance ?? 0);
+/**
+ * Check whether the Nimiq provider has reached consensus.
+ */
+export async function getConsensusStatus(provider) {
+  const nimiq = provider || (await initNimiq());
 
-return {
-  balance: lunaToNim(balanceLuna),
-  balanceLuna,
-  found: true,
-  account,
-};
-
-
-} catch (error) {
-console.error(
-"[nimiq] Balance lookup failed:",
-error
-);
-
-
-return {
-  balance: 0,
-  balanceLuna: 0,
-  found: false,
-  error:
-    error?.message ||
-    "Unable to retrieve the Nimiq balance.",
-};
-
-
-}
+  return Boolean(await nimiq.isConsensusEstablished());
 }
 
-export async function fetchNimiqBalance(
-address
-) {
-const result =
-await fetchNimiqBalanceDetailed(address);
+/**
+ * Get the current block height from Nimiq Pay.
+ */
+export async function getBlockHeight(provider) {
+  const nimiq = provider || (await initNimiq());
 
-return result.balance;
+  return await nimiq.getBlockNumber();
 }
 
-// =====================================================
-// NETWORK STATUS
-// =====================================================
+/**
+ * Send NIM through Nimiq Pay.
+ *
+ * The actual transaction is signed/executed by the
+ * Nimiq Pay wallet provider.
+ */
+export async function sendNIMTransaction(provider, { recipient, valueInNim, data }) {
+  const nimiq = provider || (await initNimiq());
 
-export async function getConsensusStatus(
-provider
-) {
-if (!provider) {
-return false;
-}
+  const cleanRecipient = cleanAddress(recipient);
 
-try {
-return Boolean(
-await provider.isConsensusEstablished()
-);
-} catch (error) {
-console.warn(
-"[nimiq] Consensus check failed:",
-error
-);
+  if (!isValidNimiqAddress(cleanRecipient)) {
+    throw new Error("Invalid recipient Nimiq address.");
+  }
 
+  const luna = nimToLuna(valueInNim);
 
-return false;
+  if (luna <= 0) {
+    throw new Error("Transaction amount must be greater than 0 NIM.");
+  }
 
+  try {
+    if (typeof data === "string" && data.trim()) {
+      return await nimiq.sendBasicTransactionWithData({
+        recipient: cleanRecipient,
+        value: luna,
+        data: data.trim(),
+      });
+    }
 
-}
-}
+    return await nimiq.sendBasicTransaction({
+      recipient: cleanRecipient,
+      value: luna,
+    });
+  } catch (error) {
+    console.error("NIM transaction failed:", error);
 
-export async function getBlockHeight(
-provider
-) {
-if (!provider) {
-return null;
-}
+    const message = error?.message?.toLowerCase() || "";
 
-try {
-const height =
-await provider.getBlockNumber();
+    if (
+      message.includes("reject") ||
+      message.includes("cancel") ||
+      message.includes("denied") ||
+      message.includes("permission_denied")
+    ) {
+      throw new Error("Transaction was rejected by the user.", { cause: error });
+    }
 
-
-const number = Number(height);
-
-return Number.isFinite(number)
-  ? number
-  : null;
-
-
-} catch (error) {
-console.warn(
-"[nimiq] Block number check failed:",
-error
-);
-
-
-return null;
-
-
-}
-}
-
-// =====================================================
-// WALLET INFO
-// =====================================================
-
-export async function getTestnetWalletInfo(
-provider
-) {
-const address =
-await getNimiqAccount(provider);
-
-const [consensus, blockNumber] =
-await Promise.all([
-getConsensusStatus(provider),
-getBlockHeight(provider),
-]);
-
-return {
-address,
-consensus,
-blockNumber,
-};
-}
-
-// =====================================================
-// SEND TRANSACTION
-// =====================================================
-
-export async function sendNIMTransaction(
-provider,
-{
-recipient,
-valueInNim,
-data = "",
-}
-) {
-if (!provider) {
-throw new Error(
-"Nimiq wallet provider is not available."
-);
-}
-
-const cleanedRecipient =
-recipient?.trim();
-
-if (!cleanedRecipient) {
-throw new Error(
-"Recipient address is required."
-);
-}
-
-const value =
-nimToLuna(valueInNim);
-
-if (!Number.isFinite(value) || value <= 0) {
-throw new Error(
-"Transaction amount must be greater than zero."
-);
-}
-
-if (
-data &&
-typeof provider.sendBasicTransactionWithData ===
-"function"
-) {
-return provider.sendBasicTransactionWithData({
-recipient: cleanedRecipient,
-value,
-data,
-});
-}
-
-if (
-typeof provider.sendBasicTransaction ===
-"function"
-) {
-return provider.sendBasicTransaction({
-recipient: cleanedRecipient,
-value,
-});
-}
-
-throw new Error(
-"The connected Nimiq Pay provider does not support basic NIM transactions."
-);
-}
-
-// =====================================================
-// SEND MAX
-// =====================================================
-
-export function getMaxSendableNim(
-balanceNim
-) {
-const balanceLuna =
-nimToLuna(balanceNim);
-
-const sendableLuna = Math.max(
-0,
-balanceLuna - DEFAULT_FEE_LUNA
-);
-
-return lunaToNim(sendableLuna);
+    throw new Error(error?.message || "Failed to send NIM transaction.", {
+      cause: error,
+    });
+  }
 }
