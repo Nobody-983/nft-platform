@@ -4,6 +4,8 @@ import initCore, * as NimiqCore from "@nimiq/core/web";
 export const LUNA_PER_NIM = 100_000;
 export const DEFAULT_FEE_LUNA = 100;
 
+const CORE_TIMEOUT = 15_000;
+
 let cachedProvider = null;
 let coreClientPromise = null;
 
@@ -22,11 +24,6 @@ export async function initNimiq(options = {}) {
   } catch (error) {
     cachedProvider = null;
 
-    console.error(
-      "Nimiq Pay provider initialization failed:",
-      error
-    );
-
     throw new Error(
       error?.message ||
         "Could not connect to the Nimiq Pay wallet.",
@@ -40,6 +37,21 @@ export function clearNimiqProvider() {
 }
 
 // =====================================================
+// TIMEOUT HELPER
+// =====================================================
+
+function withTimeout(promise, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(message));
+      }, CORE_TIMEOUT);
+    }),
+  ]);
+}
+
+// =====================================================
 // NIMIQ TESTNET WEB CLIENT
 // =====================================================
 
@@ -50,28 +62,29 @@ async function getTestnetClient() {
 
   coreClientPromise = (async () => {
     try {
-      await initCore();
+      await withTimeout(
+        initCore(),
+        "Nimiq Testnet Web Client initialization timed out."
+      );
 
       const config =
         new NimiqCore.ClientConfiguration();
 
       config.network("testalbatross");
 
-      const client =
-        await NimiqCore.Client.create(
-          config.build()
-        );
+      const client = await withTimeout(
+        NimiqCore.Client.create(config.build()),
+        "Could not create the Nimiq Testnet Web Client."
+      );
 
-      await client.waitForConsensusEstablished();
+      await withTimeout(
+        client.waitForConsensusEstablished(),
+        "Nimiq Testnet Web Client could not establish Testnet consensus. The blockchain connection is not available."
+      );
 
       return client;
     } catch (error) {
       coreClientPromise = null;
-
-      console.error(
-        "Nimiq Testnet Web Client initialization failed:",
-        error
-      );
 
       throw new Error(
         error?.message ||
@@ -311,8 +324,11 @@ export async function fetchNimiqBalanceDetailed(
     }
 
     const account =
-      await client.getAccount(
-        formattedAddress
+      await withTimeout(
+        client.getAccount(
+          formattedAddress
+        ),
+        "Nimiq Testnet account lookup timed out."
       );
 
     if (!account) {
@@ -334,13 +350,6 @@ export async function fetchNimiqBalanceDetailed(
       error: null,
     };
   } catch (error) {
-    console.error(
-      "Nimiq Testnet balance lookup failed:",
-      error
-    );
-
-    // Keep the actual blockchain/client error.
-    // WalletContext displays this through balanceWarning.
     return {
       balance: 0,
       found: false,
@@ -377,12 +386,7 @@ export async function getConsensusStatus(
     return Boolean(
       await provider.isConsensusEstablished()
     );
-  } catch (error) {
-    console.warn(
-      "Could not retrieve Nimiq consensus status:",
-      error
-    );
-
+  } catch {
     return false;
   }
 }
@@ -396,12 +400,7 @@ export async function getBlockHeight(
 
   try {
     return await provider.getBlockNumber();
-  } catch (error) {
-    console.warn(
-      "Could not retrieve Nimiq block number:",
-      error
-    );
-
+  } catch {
     return null;
   }
 }
@@ -500,11 +499,6 @@ export async function sendNIMTransaction(
       "The connected Nimiq Pay provider does not support NIM transactions."
     );
   } catch (error) {
-    console.error(
-      "Nimiq Testnet transaction failed:",
-      error
-    );
-
     throw new Error(
       error?.message ||
         "The Nimiq Testnet transaction failed.",
