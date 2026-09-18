@@ -113,7 +113,7 @@ export async function uploadNFTImage(file, userId) {
   const filePath = `${userId}/${fileName}`;
 
   // ---------------------------------------------
-  // AUTHENTICATED SUPABASE NETWORK TEST
+  // Confirm authenticated Supabase connection
   // ---------------------------------------------
   try {
     const {
@@ -152,22 +152,18 @@ export async function uploadNFTImage(file, userId) {
 
     if (!response.ok) {
       throw new Error(
-        `SUPABASE NETWORK TEST: status=${response.status}, response=${responseText}`
+        `SUPABASE CONNECTION FAILED: status=${response.status}, response=${responseText}`
       );
     }
-
-    throw new Error(
-      `SUPABASE NETWORK TEST SUCCESS: ${responseText}`
-    );
   } catch (error) {
     throw new Error(
       error?.message ||
-        `SUPABASE NETWORK TEST FAILED: ${String(error)}`
+        `SUPABASE CONNECTION FAILED: ${String(error)}`
     );
   }
 
   // ---------------------------------------------
-  // STORAGE UPLOAD
+  // Actual Storage upload
   // ---------------------------------------------
   try {
     const {
@@ -189,12 +185,12 @@ export async function uploadNFTImage(file, userId) {
 
     if (!data?.path) {
       throw new Error(
-        "STORAGE ERROR: Upload returned no file path."
+        "STORAGE ERROR: Upload succeeded but no file path was returned."
       );
     }
 
     // ---------------------------------------------
-    // GET PUBLIC URL
+    // Generate public URL
     // ---------------------------------------------
     const {
       data: publicUrlData,
