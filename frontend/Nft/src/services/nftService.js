@@ -1,4 +1,3 @@
-
 import { supabase } from "../lib/supabase";
 
 const BUCKET_NAME = "nft-images";
@@ -65,7 +64,10 @@ async function getAuthenticatedUser() {
     } = await supabase.auth.getUser();
 
     if (error) {
-      console.error("STEP 1 - Supabase auth error:", error);
+      console.error(
+        "STEP 1 - Supabase auth error:",
+        error
+      );
 
       throw new Error(
         `STEP 1 FAILED: Supabase authentication - ${
@@ -82,9 +84,14 @@ async function getAuthenticatedUser() {
 
     return user;
   } catch (error) {
-    console.error("STEP 1 - Authentication exception:", error);
+    console.error(
+      "STEP 1 - Authentication exception:",
+      error
+    );
 
-    if (error?.message?.startsWith("STEP 1 FAILED")) {
+    if (
+      error?.message?.startsWith("STEP 1 FAILED")
+    ) {
       throw error;
     }
 
@@ -101,26 +108,12 @@ function generateUUID() {
     typeof crypto !== "undefined" &&
     typeof crypto.randomUUID === "function"
   ) {
-    try {
-      return crypto.randomUUID();
-    } catch {
-      // Use fallback below.
-    }
+    return crypto.randomUUID();
   }
 
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
-    /[xy]/g,
-    (character) => {
-      const random = (Math.random() * 16) | 0;
-
-      const value =
-        character === "x"
-          ? random
-          : (random & 0x3) | 0x8;
-
-      return value.toString(16);
-    }
-  );
+  return `${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
 }
 
 export async function uploadNFTImage(file, userId) {
@@ -144,7 +137,9 @@ export async function uploadNFTImage(file, userId) {
   const filePath = `${userId}/${fileName}`;
 
   try {
-    const { error } = await supabase.storage
+    const {
+      error,
+    } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(filePath, file, {
         cacheControl: "31536000",
@@ -158,12 +153,20 @@ export async function uploadNFTImage(file, userId) {
         error
       );
 
+      const details = [
+        error?.message,
+        error?.statusCode,
+        error?.status,
+        error?.error,
+        error?.details,
+        error?.hint,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
       throw new Error(
         `STEP 2 FAILED: Image upload - ${
-          error.message ||
-          error.details ||
-          error.hint ||
-          "Unknown storage error"
+          details || "Unknown storage error"
         }`
       );
     }
@@ -173,13 +176,27 @@ export async function uploadNFTImage(file, userId) {
       error
     );
 
-    if (error?.message?.startsWith("STEP 2 FAILED")) {
+    if (
+      error?.message?.startsWith("STEP 2 FAILED")
+    ) {
       throw error;
     }
 
+    const details = [
+      error?.name,
+      error?.message,
+      error?.statusCode,
+      error?.status,
+      error?.error,
+      error?.details,
+      error?.hint,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
     throw new Error(
       `STEP 2 FAILED: Could not reach Supabase Storage - ${
-        error?.message || "Failed to fetch"
+        details || "Failed to fetch"
       }`
     );
   }
@@ -213,12 +230,17 @@ export async function uploadNFTImage(file, userId) {
   }
 }
 
+async function getAuthenticatedUserForDelete() {
+  return getAuthenticatedUser();
+}
+
 export async function deleteNFTImage(filePath) {
   if (!filePath) {
     return true;
   }
 
-  const authUser = await getAuthenticatedUser();
+  const authUser =
+    await getAuthenticatedUserForDelete();
 
   if (!filePath.startsWith(`${authUser.id}/`)) {
     throw new Error(
@@ -232,7 +254,7 @@ export async function deleteNFTImage(filePath) {
 
   if (error) {
     console.error(
-      "Supabase storage delete error:",
+      "NFT image deletion error:",
       error
     );
 
@@ -302,7 +324,10 @@ export async function createNFT({
   }
 
   try {
-    const { data, error } = await supabase
+    const {
+      data,
+      error,
+    } = await supabase
       .from("nfts")
       .insert([
         {
@@ -341,7 +366,9 @@ export async function createNFT({
       error
     );
 
-    if (error?.message?.startsWith("STEP 3 FAILED")) {
+    if (
+      error?.message?.startsWith("STEP 3 FAILED")
+    ) {
       throw error;
     }
 
@@ -378,7 +405,7 @@ function getStoragePathFromUrl(imageUrl) {
     );
   } catch (error) {
     console.error(
-      "Unable to extract storage path:",
+      "Could not extract storage path:",
       error
     );
 
@@ -411,7 +438,7 @@ export async function deleteNFT(nft) {
 
   if (error) {
     console.error(
-      "Supabase NFT delete error:",
+      "NFT database deletion error:",
       error
     );
 
@@ -423,9 +450,8 @@ export async function deleteNFT(nft) {
     );
   }
 
-  const filePath = getStoragePathFromUrl(
-    nft.image_url
-  );
+  const filePath =
+    getStoragePathFromUrl(nft.image_url);
 
   if (filePath) {
     try {
