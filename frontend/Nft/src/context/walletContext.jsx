@@ -45,6 +45,30 @@ export function WalletProvider({ children }) {
   const [balanceWarning, setBalanceWarning] = useState(null);
 
   // =====================================================
+  // GET ADDRESS FROM NIMIQ PAY
+  // =====================================================
+
+  const getProviderAddress = useCallback(async (provider) => {
+    if (!provider) {
+      throw new Error(
+        "Nimiq Pay wallet provider is not available."
+      );
+    }
+
+    const accounts = await provider.listAccounts();
+
+    const address = accounts?.[0]?.trim();
+
+    if (!address) {
+      throw new Error(
+        "No Nimiq wallet account is connected."
+      );
+    }
+
+    return address;
+  }, []);
+
+  // =====================================================
   // REFRESH BALANCE
   // =====================================================
 
@@ -129,10 +153,6 @@ export function WalletProvider({ children }) {
     setBalanceWarning(null);
 
     try {
-      // -----------------------------------------------
-      // 1. Initialize Nimiq Pay
-      // -----------------------------------------------
-
       const provider =
         nimiq ||
         (await initNimiq({
@@ -147,34 +167,8 @@ export function WalletProvider({ children }) {
 
       setNimiq(provider);
 
-      // -----------------------------------------------
-      // 2. Get wallet address
-      // -----------------------------------------------
-
-      const accounts =
-        await provider.listAccounts();
-
-      if (
-        !Array.isArray(accounts) ||
-        accounts.length === 0
-      ) {
-        throw new Error(
-          "No Nimiq wallet account is connected."
-        );
-      }
-
       const address =
-        accounts[0]?.trim();
-
-      if (!address) {
-        throw new Error(
-          "Nimiq Pay returned an empty wallet address."
-        );
-      }
-
-      // -----------------------------------------------
-      // 3. Store wallet state
-      // -----------------------------------------------
+        await getProviderAddress(provider);
 
       setWalletAddress(address);
       setIsConnected(true);
@@ -184,10 +178,6 @@ export function WalletProvider({ children }) {
         address
       );
 
-      // -----------------------------------------------
-      // 4. Authenticate with Supabase
-      // -----------------------------------------------
-
       const {
         user: authUser,
         profile: authProfile,
@@ -196,26 +186,35 @@ export function WalletProvider({ children }) {
       setUser(authUser);
       setProfile(authProfile);
 
-      // -----------------------------------------------
-      // 5. Testnet balance check
-      // -----------------------------------------------
-
-      await refreshBalance(address);
-
-      // -----------------------------------------------
-      // 6. Testnet network status
-      // -----------------------------------------------
-
-      await refreshNetwork(provider);
-
-      // -----------------------------------------------
-      // 7. Navigate
-      // -----------------------------------------------
-
+      /*
+       * Wallet connection must not wait for the
+       * Testnet balance client.
+       */
       setLoading(false);
 
       navigate("/dashboard", {
         replace: true,
+      });
+
+      /*
+       * Testnet balance lookup runs separately.
+       * Any error is displayed through balanceWarning.
+       */
+      refreshBalance(address).catch((err) => {
+        setBalanceWarning(
+          err?.message ||
+            "Unable to retrieve the Nimiq Testnet wallet balance."
+        );
+      });
+
+      /*
+       * Network status also runs separately.
+       */
+      refreshNetwork(provider).catch((err) => {
+        setBalanceWarning(
+          err?.message ||
+            "Unable to retrieve the Nimiq Testnet network status."
+        );
       });
 
       return address;
@@ -243,31 +242,21 @@ export function WalletProvider({ children }) {
       setIsConnected(false);
 
       setBalance(0);
-
-      /*
-       * Keep the existing balance/testnet error if one
-       * was already produced.
-       *
-       * We do not clear balanceWarning here.
-       */
-      setBalanceWarning((currentWarning) => {
-        return currentWarning || friendlyMessage;
-      });
+      setBalanceWarning(friendlyMessage);
 
       localStorage.removeItem(
         "nimiq_wallet"
       );
 
-      throw new Error(friendlyMessage, {
-        cause: err,
-      });
-    } finally {
       setLoading(false);
+
+      return null;
     }
   }, [
     loading,
     nimiq,
     navigate,
+    getProviderAddress,
     refreshBalance,
     refreshNetwork,
   ]);
@@ -318,11 +307,8 @@ export function WalletProvider({ children }) {
         setNimiq(provider);
 
         try {
-          const accounts =
-            await provider.listAccounts();
-
           const address =
-            accounts?.[0]?.trim();
+            await getProviderAddress(provider);
 
           if (!mounted) return;
 
@@ -335,7 +321,16 @@ export function WalletProvider({ children }) {
               address
             );
 
-            await refreshBalance(address);
+            refreshBalance(address).catch(
+              (err) => {
+                if (mounted) {
+                  setBalanceWarning(
+                    err?.message ||
+                      "Unable to retrieve the Nimiq Testnet wallet balance."
+                  );
+                }
+              }
+            );
           }
         } catch (walletError) {
           if (mounted) {
@@ -346,9 +341,16 @@ export function WalletProvider({ children }) {
           }
         }
 
-        if (mounted) {
-          await refreshNetwork(provider);
-        }
+        refreshNetwork(provider).catch(
+          (err) => {
+            if (mounted) {
+              setBalanceWarning(
+                err?.message ||
+                  "Unable to retrieve the Nimiq Testnet network status."
+              );
+            }
+          }
+        );
       } catch (err) {
         if (mounted) {
           setBalanceWarning(
@@ -369,6 +371,7 @@ export function WalletProvider({ children }) {
       mounted = false;
     };
   }, [
+    getProviderAddress,
     refreshBalance,
     refreshNetwork,
   ]);
