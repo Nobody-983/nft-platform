@@ -3,7 +3,6 @@ import {
   Wallet,
   Loader2,
   ShieldCheck,
-  Sparkles,
   Store,
   ArrowRight,
   Zap,
@@ -16,17 +15,6 @@ function Auth() {
     connectWallet,
     loading,
   } = useWallet();
-
-  const handleConnect = async () => {
-    try {
-      await connectWallet();
-    } catch (err) {
-      console.error(
-        "Wallet connection error:",
-        err
-      );
-    }
-  };
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#08080d] text-white">
@@ -70,10 +58,11 @@ function Auth() {
             {/* Brand */}
 
             <div className="mb-8 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06]">
-                <Sparkles
-                  size={21}
-                  className="text-purple-300"
+              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.06]">
+                <img
+                  src="/nimiq.png"
+                  alt="Nimiq NFT"
+                  className="h-full w-full object-contain p-1.5"
                 />
               </div>
 
@@ -115,7 +104,7 @@ function Auth() {
 
             <div className="mt-10 grid max-w-xl gap-3 sm:grid-cols-3">
               <Feature
-                icon={Sparkles}
+                icon={Store}
                 title="Discover"
                 description="Explore digital collectibles."
               />
@@ -170,8 +159,12 @@ function Auth() {
                 {/* Card heading */}
 
                 <div className="mb-8">
-                  <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-300">
-                    <Wallet size={22} />
+                  <div className="mb-5 flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-purple-500/10">
+                    <img
+                      src="/nimiq.png"
+                      alt="Nimiq NFT"
+                      className="h-9 w-9 object-contain"
+                    />
                   </div>
 
                   <h2 className="text-2xl font-bold">
