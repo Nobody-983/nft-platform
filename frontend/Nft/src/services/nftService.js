@@ -52,24 +52,32 @@ function validateImage(file) {
 // =========================================================
 
 async function getAuthenticatedUser() {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  try {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
 
-  if (error) {
+    if (error) {
+      throw new Error(
+        `Authentication failed: ${error.message}`
+      );
+    }
+
+    if (!session?.user) {
+      throw new Error(
+        "No authenticated Supabase session found."
+      );
+    }
+
+    return session.user;
+  } catch (error) {
     throw new Error(
-      `Authentication failed: ${error.message}`
+      `AUTHENTICATION FAILED: ${
+        error?.message || String(error)
+      }`
     );
   }
-
-  if (!user) {
-    throw new Error(
-      "No authenticated Supabase user found."
-    );
-  }
-
-  return user;
 }
 
 // =========================================================
@@ -110,16 +118,11 @@ export async function uploadNFTImage(file, userId) {
   const fileName = generateFileName(extension);
   const filePath = `${userId}/${fileName}`;
 
-  console.log("NFT IMAGE UPLOAD");
-  console.log("Bucket:", BUCKET_NAME);
-  console.log("Path:", filePath);
-  console.log("User:", authUser.id);
-  console.log("File:", file.name);
-  console.log("Size:", file.size);
-  console.log("Type:", file.type);
-
   try {
-    const { data, error } = await supabase.storage
+    const {
+      data,
+      error,
+    } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(filePath, file, {
         cacheControl: "31536000",
@@ -128,11 +131,6 @@ export async function uploadNFTImage(file, userId) {
       });
 
     if (error) {
-      console.error(
-        "Supabase Storage upload error:",
-        error
-      );
-
       throw new Error(
         error.message ||
           error.details ||
@@ -141,50 +139,35 @@ export async function uploadNFTImage(file, userId) {
       );
     }
 
-    console.log(
-      "NFT image uploaded successfully:",
-      data
-    );
-  } catch (error) {
-    console.error(
-      "NFT image upload failed:",
-      error
-    );
-
-    if (error instanceof TypeError) {
+    if (!data?.path) {
       throw new Error(
-        "Could not connect to Supabase Storage. Check your Supabase URL, key, or network connection."
+        "Image upload completed but no storage path was returned."
       );
     }
 
-    throw error;
-  }
+    const {
+      data: publicUrlData,
+    } = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(filePath);
 
-  // =======================================================
-  // GET PUBLIC URL
-  // =======================================================
+    if (!publicUrlData?.publicUrl) {
+      throw new Error(
+        "Image uploaded but a public URL could not be generated."
+      );
+    }
 
-  const {
-    data: publicUrlData,
-  } = supabase.storage
-    .from(BUCKET_NAME)
-    .getPublicUrl(filePath);
-
-  if (!publicUrlData?.publicUrl) {
+    return {
+      publicUrl: publicUrlData.publicUrl,
+      filePath,
+    };
+  } catch (error) {
     throw new Error(
-      "Image uploaded but a public URL could not be generated."
+      `IMAGE UPLOAD FAILED: ${
+        error?.message || String(error)
+      }`
     );
   }
-
-  console.log(
-    "NFT image URL:",
-    publicUrlData.publicUrl
-  );
-
-  return {
-    publicUrl: publicUrlData.publicUrl,
-    filePath,
-  };
 }
 
 // =========================================================
@@ -204,20 +187,30 @@ export async function deleteNFTImage(filePath) {
     );
   }
 
-  const { error } = await supabase.storage
-    .from(BUCKET_NAME)
-    .remove([filePath]);
+  try {
+    const {
+      error,
+    } = await supabase.storage
+      .from(BUCKET_NAME)
+      .remove([filePath]);
 
-  if (error) {
+    if (error) {
+      throw new Error(
+        error.message ||
+          error.details ||
+          error.hint ||
+          "Unable to delete NFT image."
+      );
+    }
+
+    return true;
+  } catch (error) {
     throw new Error(
-      error.message ||
-        error.details ||
-        error.hint ||
-        "Unable to delete NFT image."
+      `IMAGE DELETE FAILED: ${
+        error?.message || String(error)
+      }`
     );
   }
-
-  return true;
 }
 
 // =========================================================
@@ -234,27 +227,19 @@ export async function createNFT({
   currency,
 }) {
   if (!creator_id) {
-    throw new Error(
-      "NFT creator is missing."
-    );
+    throw new Error("NFT creator is missing.");
   }
 
   if (!name?.trim()) {
-    throw new Error(
-      "NFT name is required."
-    );
+    throw new Error("NFT name is required.");
   }
 
   if (!image_url) {
-    throw new Error(
-      "NFT image is missing."
-    );
+    throw new Error("NFT image is missing.");
   }
 
   if (!category) {
-    throw new Error(
-      "NFT category is required."
-    );
+    throw new Error("NFT category is required.");
   }
 
   const numericPrice = Number(price);
@@ -297,11 +282,6 @@ export async function createNFT({
       .single();
 
     if (error) {
-      console.error(
-        "NFT database insert error:",
-        error
-      );
-
       throw new Error(
         error.message ||
           error.details ||
@@ -310,20 +290,19 @@ export async function createNFT({
       );
     }
 
-    return data;
-  } catch (error) {
-    console.error(
-      "NFT creation failed:",
-      error
-    );
-
-    if (error instanceof TypeError) {
+    if (!data) {
       throw new Error(
-        "Could not connect to Supabase database."
+        "NFT was created but no NFT data was returned."
       );
     }
 
-    throw error;
+    return data;
+  } catch (error) {
+    throw new Error(
+      `NFT DATABASE INSERT FAILED: ${
+        error?.message || String(error)
+      }`
+    );
   }
 }
 
@@ -384,18 +363,28 @@ export async function deleteNFT(nft) {
     );
   }
 
-  const { error } = await supabase
-    .from("nfts")
-    .delete()
-    .eq("id", nft.id)
-    .eq("creator_id", authUser.id);
+  try {
+    const {
+      error,
+    } = await supabase
+      .from("nfts")
+      .delete()
+      .eq("id", nft.id)
+      .eq("creator_id", authUser.id);
 
-  if (error) {
+    if (error) {
+      throw new Error(
+        error.message ||
+          error.details ||
+          error.hint ||
+          "Unable to delete NFT."
+      );
+    }
+  } catch (error) {
     throw new Error(
-      error.message ||
-        error.details ||
-        error.hint ||
-        "Unable to delete NFT."
+      `NFT DELETE FAILED: ${
+        error?.message || String(error)
+      }`
     );
   }
 
