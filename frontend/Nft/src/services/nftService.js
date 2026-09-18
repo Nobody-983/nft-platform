@@ -137,11 +137,13 @@ export async function uploadNFTImage(file, userId) {
   const filePath = `${userId}/${fileName}`;
 
   try {
+    const fileBuffer = await file.arrayBuffer();
+
     const {
       error,
     } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(filePath, file, {
+      .upload(filePath, fileBuffer, {
         cacheControl: "31536000",
         contentType: file.type,
         upsert: false,
@@ -230,17 +232,12 @@ export async function uploadNFTImage(file, userId) {
   }
 }
 
-async function getAuthenticatedUserForDelete() {
-  return getAuthenticatedUser();
-}
-
 export async function deleteNFTImage(filePath) {
   if (!filePath) {
     return true;
   }
 
-  const authUser =
-    await getAuthenticatedUserForDelete();
+  const authUser = await getAuthenticatedUser();
 
   if (!filePath.startsWith(`${authUser.id}/`)) {
     throw new Error(
