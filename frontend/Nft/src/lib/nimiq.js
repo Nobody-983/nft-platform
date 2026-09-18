@@ -1,3 +1,4 @@
+
 import { init } from "@nimiq/mini-app-sdk";
 import initCore, * as NimiqCore from "@nimiq/core/web";
 
@@ -10,8 +11,11 @@ let coreClientPromise = null;
 /**
  * Initialize Nimiq Pay.
  *
- * This is kept separate from the Web Client because the Mini App SDK
- * handles the user's wallet connection, signing and transactions.
+ * The Mini App SDK handles:
+ * - wallet connection
+ * - account access
+ * - signing
+ * - NIM transactions
  */
 export async function initNimiq(options = {}) {
   if (cachedProvider) {
@@ -24,6 +28,7 @@ export async function initNimiq(options = {}) {
   } catch (error) {
     cachedProvider = null;
 
+    // KEEP THE EXISTING ERROR MESSAGE/PATH.
     throw new Error(
       error?.message || "Could not initialize Nimiq Pay.",
       { cause: error }
@@ -32,7 +37,7 @@ export async function initNimiq(options = {}) {
 }
 
 /**
- * Clear the cached Nimiq Pay provider.
+ * Clear cached Nimiq Pay provider.
  */
 export function clearNimiqProvider() {
   cachedProvider = null;
@@ -43,8 +48,13 @@ export function clearNimiqProvider() {
  *
  * IMPORTANT:
  * This does NOT change the Nimiq Pay wallet network.
- * It only makes the Web Client connect to the Nimiq Testnet
- * so we can read Testnet blockchain data.
+ *
+ * It only makes the Web Client connect to:
+ * TestAlbatross
+ *
+ * We intentionally do NOT wait for consensus here.
+ * The account request itself will report the real blockchain
+ * connection error if the Testnet client cannot be used.
  */
 async function getTestnetClient() {
   if (coreClientPromise) {
@@ -57,22 +67,16 @@ async function getTestnetClient() {
 
       const config = new NimiqCore.ClientConfiguration();
 
-      // Official Nimiq Web Client Testnet configuration.
+      // Official Nimiq Testnet network name.
       config.network("TestAlbatross");
 
       const client = await NimiqCore.Client.create(config.build());
-
-      await client.waitForConsensusEstablished();
 
       return client;
     } catch (error) {
       coreClientPromise = null;
 
-      console.error(
-        "Nimiq Testnet Web Client initialization failed:",
-        error
-      );
-
+      // DO NOT CHANGE THE ERROR.
       throw new Error(
         error?.message ||
           "Could not connect to the Nimiq Testnet blockchain.",
@@ -111,9 +115,7 @@ export function isValidNimiqAddress(address) {
 /**
  * Get the connected wallet address from Nimiq Pay.
  *
- * IMPORTANT:
  * Keep using listAccounts().
- * This preserves the existing wallet connection flow.
  */
 export async function getNimiqAccount(provider) {
   if (!provider) {
@@ -153,7 +155,7 @@ export async function getNimiqAccounts(provider) {
 }
 
 /**
- * Format a Nimiq address for display/API usage.
+ * Format a Nimiq address.
  */
 export function formatNimiqAddress(address) {
   return cleanAddress(address);
@@ -211,7 +213,7 @@ export function lunaToNim(luna) {
 }
 
 /**
- * Format a Luna balance as NIM.
+ * Format Luna balance as NIM.
  */
 export function formatNim(luna, maximumFractionDigits = 5) {
   const nim = lunaToNim(luna);
@@ -223,7 +225,7 @@ export function formatNim(luna, maximumFractionDigits = 5) {
 }
 
 /**
- * Calculate the maximum amount that can safely be sent.
+ * Calculate maximum safely sendable NIM.
  */
 export function getMaxSendableNim(balanceLuna) {
   const balance = Number(balanceLuna);
@@ -236,7 +238,10 @@ export function getMaxSendableNim(balanceLuna) {
 }
 
 /**
- * Get a wallet's Testnet account directly from the Nimiq Web Client.
+ * Get a wallet's Testnet account from the Nimiq Web Client.
+ *
+ * IMPORTANT:
+ * This uses TestAlbatross.
  *
  * There is NO HTTP RPC fetch here.
  */
@@ -254,6 +259,17 @@ export async function fetchNimiqBalanceDetailed(targetAddress) {
   try {
     const client = await getTestnetClient();
 
+    /*
+     * The Web Client handles the Testnet blockchain connection.
+     *
+     * Do not use:
+     * - fetch()
+     * - rpc.nimiq-testnet.com
+     * - rpc.pos.nimiq-testnet.com
+     * - rpc.testnet.nimiq.network
+     *
+     * The address is passed directly to the Web Client.
+     */
     const account = await client.getAccount(cleanedAddress);
 
     if (!account) {
@@ -290,6 +306,13 @@ export async function fetchNimiqBalanceDetailed(targetAddress) {
       error: null,
     };
   } catch (error) {
+    /*
+     * IMPORTANT:
+     * DO NOT change this error path.
+     *
+     * WalletContext uses result.error to populate
+     * balanceWarning in the UI.
+     */
     const message =
       error?.message ||
       "Unable to read the wallet balance from Nimiq Testnet.";
@@ -312,9 +335,7 @@ export async function fetchNimiqBalance(targetAddress) {
 }
 
 /**
- * Check consensus through the Nimiq Pay provider.
- *
- * This describes the provider's current consensus state.
+ * Check consensus through Nimiq Pay.
  */
 export async function getConsensusStatus(provider) {
   if (!provider) {
@@ -329,7 +350,7 @@ export async function getConsensusStatus(provider) {
 }
 
 /**
- * Get the current block height from Nimiq Pay.
+ * Get current block height from Nimiq Pay.
  */
 export async function getBlockHeight(provider) {
   if (!provider) {
@@ -344,7 +365,7 @@ export async function getBlockHeight(provider) {
 }
 
 /**
- * Combined wallet information.
+ * Combined Testnet wallet information.
  */
 export async function getTestnetWalletInfo(targetAddress) {
   const balanceInfo = await fetchNimiqBalanceDetailed(targetAddress);
@@ -362,7 +383,7 @@ export async function getTestnetWalletInfo(targetAddress) {
  * Send NIM through Nimiq Pay.
  *
  * IMPORTANT:
- * The first argument is the Nimiq Pay provider,
+ * First argument is the Nimiq Pay provider,
  * NOT the wallet address.
  */
 export async function sendNIMTransaction(
@@ -385,7 +406,10 @@ export async function sendNIMTransaction(
     throw new Error("The NIM amount must be greater than zero.");
   }
 
-  if (data && typeof provider.sendBasicTransactionWithData === "function") {
+  if (
+    data &&
+    typeof provider.sendBasicTransactionWithData === "function"
+  ) {
     return provider.sendBasicTransactionWithData({
       recipient: cleanedRecipient,
       value,
