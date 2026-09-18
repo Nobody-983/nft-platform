@@ -1,17 +1,18 @@
 import { init } from "@nimiq/mini-app-sdk";
+import initCore, * as NimiqCore from "@nimiq/core/web";
 
 export const LUNA_PER_NIM = 100_000;
 export const DEFAULT_FEE_LUNA = 100;
 
-// Nimiq Testnet RPC
-const RPC_URL = "https://rpc.testnet.nimiq.network";
-
 let cachedProvider = null;
+let coreClientPromise = null;
 
-// =====================================================
-// NIMIQ PAY PROVIDER
-// =====================================================
-
+/**
+ * Initialize Nimiq Pay.
+ *
+ * This is kept separate from the Web Client because the Mini App SDK
+ * handles the user's wallet connection, signing and transactions.
+ */
 export async function initNimiq(options = {}) {
   if (cachedProvider) {
     return cachedProvider;
@@ -24,484 +25,382 @@ export async function initNimiq(options = {}) {
     cachedProvider = null;
 
     throw new Error(
-      error?.message ||
-        "Could not connect to the Nimiq Pay wallet.",
+      error?.message || "Could not initialize Nimiq Pay.",
       { cause: error }
     );
   }
 }
 
+/**
+ * Clear the cached Nimiq Pay provider.
+ */
 export function clearNimiqProvider() {
   cachedProvider = null;
 }
 
-// =====================================================
-// ADDRESS HELPERS
-// =====================================================
-
-export function cleanAddress(address) {
-  if (!address || typeof address !== "string") {
-    return "";
+/**
+ * Initialize the Nimiq Web Client on Testnet.
+ *
+ * IMPORTANT:
+ * This does NOT change the Nimiq Pay wallet network.
+ * It only makes the Web Client connect to the Nimiq Testnet
+ * so we can read Testnet blockchain data.
+ */
+async function getTestnetClient() {
+  if (coreClientPromise) {
+    return coreClientPromise;
   }
 
-  return address
-    .trim()
-    .replace(/\s+/g, "");
+  coreClientPromise = (async () => {
+    try {
+      await initCore();
+
+      const config = new NimiqCore.ClientConfiguration();
+
+      // Official Nimiq Web Client Testnet configuration.
+      config.network("TestAlbatross");
+
+      const client = await NimiqCore.Client.create(config.build());
+
+      await client.waitForConsensusEstablished();
+
+      return client;
+    } catch (error) {
+      coreClientPromise = null;
+
+      console.error(
+        "Nimiq Testnet Web Client initialization failed:",
+        error
+      );
+
+      throw new Error(
+        error?.message ||
+          "Could not connect to the Nimiq Testnet blockchain.",
+        { cause: error }
+      );
+    }
+  })();
+
+  return coreClientPromise;
 }
 
+/**
+ * Remove spaces from a Nimiq user-friendly address.
+ */
+export function cleanAddress(address) {
+  if (!address) return "";
+
+  return String(address)
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase();
+}
+
+// Compatibility alias.
 export const cleanNimiqAddress = cleanAddress;
 
+/**
+ * Basic Nimiq address check.
+ */
 export function isValidNimiqAddress(address) {
   const cleaned = cleanAddress(address);
 
-  if (!cleaned) {
-    return false;
-  }
-
-  // Nimiq user-friendly addresses start with NQ
-  return /^NQ[A-Z0-9]+$/.test(cleaned);
+  return /^NQ[A-Z0-9]{32}$/.test(cleaned);
 }
 
+/**
+ * Get the connected wallet address from Nimiq Pay.
+ *
+ * IMPORTANT:
+ * Keep using listAccounts().
+ * This preserves the existing wallet connection flow.
+ */
+export async function getNimiqAccount(provider) {
+  if (!provider) {
+    throw new Error("Nimiq Pay provider is not available.");
+  }
+
+  if (typeof provider.listAccounts !== "function") {
+    throw new Error(
+      "This version of Nimiq Pay does not support listAccounts()."
+    );
+  }
+
+  const accounts = await provider.listAccounts();
+
+  if (!accounts || accounts.length === 0) {
+    throw new Error("No Nimiq wallet account is connected.");
+  }
+
+  return accounts[0];
+}
+
+/**
+ * Get all connected Nimiq Pay accounts.
+ */
+export async function getNimiqAccounts(provider) {
+  if (!provider) {
+    throw new Error("Nimiq Pay provider is not available.");
+  }
+
+  if (typeof provider.listAccounts !== "function") {
+    throw new Error(
+      "This version of Nimiq Pay does not support listAccounts()."
+    );
+  }
+
+  return provider.listAccounts();
+}
+
+/**
+ * Format a Nimiq address for display/API usage.
+ */
 export function formatNimiqAddress(address) {
-  const cleaned = cleanAddress(address);
-
-  if (!cleaned) {
-    return "";
-  }
-
-  return cleaned;
+  return cleanAddress(address);
 }
 
+/**
+ * Format an address for Nimiq Pay provider calls.
+ */
 export function formatForProvider(address) {
-  return formatNimiqAddress(address);
+  return cleanAddress(address);
 }
 
-export function shortenAddress(
-  address,
-  start = 6,
-  end = 6
-) {
+/**
+ * Shorten an address for the UI.
+ */
+export function shortenAddress(address, start = 8, end = 8) {
   const cleaned = cleanAddress(address);
 
-  if (!cleaned) {
-    return "";
-  }
+  if (!cleaned) return "";
 
-  if (
-    cleaned.length <=
-    start + end + 3
-  ) {
+  if (cleaned.length <= start + end + 3) {
     return cleaned;
   }
 
-  return `${cleaned.slice(
-    0,
-    start
-  )}...${cleaned.slice(-end)}`;
+  return `${cleaned.slice(0, start)}...${cleaned.slice(-end)}`;
 }
 
-export const shortenNimiqAddress =
-  shortenAddress;
+// Compatibility alias.
+export const shortenNimiqAddress = shortenAddress;
 
-// =====================================================
-// WALLET ACCOUNT
-// =====================================================
+/**
+ * Convert NIM to Luna.
+ */
+export function nimToLuna(amount) {
+  const value = Number(amount);
 
-export async function getNimiqAccount(
-  provider
-) {
-  if (!provider) {
-    throw new Error(
-      "Nimiq Pay wallet provider is not available."
-    );
-  }
-
-  const accounts =
-    await provider.listAccounts();
-
-  if (
-    !Array.isArray(accounts) ||
-    accounts.length === 0
-  ) {
-    throw new Error(
-      "No Nimiq wallet account is connected."
-    );
-  }
-
-  const address = accounts[0];
-
-  if (
-    !address ||
-    typeof address !== "string"
-  ) {
-    throw new Error(
-      "Nimiq Pay returned an invalid wallet address."
-    );
-  }
-
-  return address.trim();
-}
-
-export async function getNimiqAccounts(
-  provider
-) {
-  if (!provider) {
-    throw new Error(
-      "Nimiq Pay wallet provider is not available."
-    );
-  }
-
-  const accounts =
-    await provider.listAccounts();
-
-  if (!Array.isArray(accounts)) {
-    throw new Error(
-      "Nimiq Pay returned an invalid account list."
-    );
-  }
-
-  return accounts;
-}
-
-// =====================================================
-// NIM / LUNA CONVERSION
-// =====================================================
-
-export function nimToLuna(value) {
-  const nim = Number(value);
-
-  if (!Number.isFinite(nim)) {
+  if (!Number.isFinite(value)) {
     throw new Error("Invalid NIM amount.");
   }
 
-  return Math.round(
-    nim * LUNA_PER_NIM
-  );
+  return Math.round(value * LUNA_PER_NIM);
 }
 
-export function lunaToNim(value) {
-  const luna = Number(value);
+/**
+ * Convert Luna to NIM.
+ */
+export function lunaToNim(luna) {
+  const value = Number(luna);
 
-  if (!Number.isFinite(luna)) {
+  if (!Number.isFinite(value)) {
     return 0;
   }
 
-  return luna / LUNA_PER_NIM;
+  return value / LUNA_PER_NIM;
 }
 
-export function formatNim(value) {
-  return lunaToNim(value).toLocaleString(
-    undefined,
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 5,
-    }
-  );
+/**
+ * Format a Luna balance as NIM.
+ */
+export function formatNim(luna, maximumFractionDigits = 5) {
+  const nim = lunaToNim(luna);
+
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
+  }).format(nim);
 }
 
-export function getMaxSendableNim(
-  balance
-) {
-  const balanceLuna =
-    nimToLuna(balance);
+/**
+ * Calculate the maximum amount that can safely be sent.
+ */
+export function getMaxSendableNim(balanceLuna) {
+  const balance = Number(balanceLuna);
 
-  const sendableLuna = Math.max(
-    0,
-    balanceLuna - DEFAULT_FEE_LUNA
-  );
+  if (!Number.isFinite(balance) || balance <= DEFAULT_FEE_LUNA) {
+    return 0;
+  }
 
-  return lunaToNim(sendableLuna);
+  return lunaToNim(balance - DEFAULT_FEE_LUNA);
 }
 
-// =====================================================
-// TESTNET BALANCE
-// =====================================================
+/**
+ * Get a wallet's Testnet account directly from the Nimiq Web Client.
+ *
+ * There is NO HTTP RPC fetch here.
+ */
+export async function fetchNimiqBalanceDetailed(targetAddress) {
+  const cleanedAddress = cleanAddress(targetAddress);
 
-export async function fetchNimiqBalanceDetailed(
-  targetAddress
-) {
-  const cleanTarget =
-    cleanAddress(targetAddress);
-
-  if (!cleanTarget) {
+  if (!cleanedAddress) {
     return {
       balance: 0,
       found: false,
-      error:
-        "A Nimiq wallet address is required.",
+      error: "A Nimiq wallet address is required.",
     };
   }
 
   try {
-    const response = await fetch(
-      RPC_URL,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method:
-            "getAccountByAddress",
-          params: [cleanTarget],
-          id: 1,
-        }),
-      }
-    );
+    const client = await getTestnetClient();
 
-    if (!response.ok) {
+    const account = await client.getAccount(cleanedAddress);
+
+    if (!account) {
       return {
         balance: 0,
         found: false,
-        error:
-          `Nimiq Testnet RPC returned HTTP ${response.status}.`,
+        error: "Wallet account was not found on Nimiq Testnet.",
       };
     }
 
-    const payload =
-      await response.json();
+    const rawBalance = account.balance;
 
-    // Preserve the actual RPC error.
-    if (payload?.error) {
-      const rpcMessage =
-        payload.error.message ||
-        payload.error.data ||
-        "The Nimiq Testnet RPC returned an error.";
-
+    if (rawBalance === undefined || rawBalance === null) {
       return {
         balance: 0,
         found: false,
-        error: String(rpcMessage),
+        error: "The Testnet account did not return a balance.",
       };
     }
 
-    if (!payload?.result) {
+    const balance = Number(rawBalance);
+
+    if (!Number.isFinite(balance)) {
       return {
         balance: 0,
         found: false,
-        error:
-          "The wallet address could not be found on the Nimiq Testnet blockchain.",
-      };
-    }
-
-    const lunaBalance =
-      Number(
-        payload.result.balance ?? 0
-      );
-
-    if (!Number.isFinite(lunaBalance)) {
-      return {
-        balance: 0,
-        found: false,
-        error:
-          "The Nimiq Testnet returned an invalid balance.",
+        error: "The Testnet returned an invalid wallet balance.",
       };
     }
 
     return {
-      balance:
-        lunaBalance / LUNA_PER_NIM,
+      balance,
       found: true,
       error: null,
     };
   } catch (error) {
+    const message =
+      error?.message ||
+      "Unable to read the wallet balance from Nimiq Testnet.";
+
     return {
       balance: 0,
       found: false,
-      error:
-        error?.message ||
-        "Unable to connect to the Nimiq Testnet RPC.",
+      error: message,
     };
   }
 }
 
-export async function fetchNimiqBalance(
-  address
-) {
-  const result =
-    await fetchNimiqBalanceDetailed(
-      address
-    );
+/**
+ * Simple balance helper.
+ */
+export async function fetchNimiqBalance(targetAddress) {
+  const result = await fetchNimiqBalanceDetailed(targetAddress);
 
   return result.balance;
 }
 
-// =====================================================
-// NETWORK STATUS
-// =====================================================
-
-export async function getConsensusStatus(
-  provider
-) {
+/**
+ * Check consensus through the Nimiq Pay provider.
+ *
+ * This describes the provider's current consensus state.
+ */
+export async function getConsensusStatus(provider) {
   if (!provider) {
     return false;
   }
 
-  try {
-    if (
-      typeof provider.isConsensusEstablished ===
-      "function"
-    ) {
-      return Boolean(
-        await provider.isConsensusEstablished()
-      );
-    }
-
-    return false;
-  } catch {
-    return false;
+  if (typeof provider.isConsensusEstablished === "function") {
+    return provider.isConsensusEstablished();
   }
+
+  return false;
 }
 
-export async function getBlockHeight(
-  provider
-) {
-  try {
-    // The provider is the source of wallet/network state.
-    if (
-      provider &&
-      typeof provider.getBlockNumber ===
-        "function"
-    ) {
-      return await provider.getBlockNumber();
-    }
-
-    // Fallback to the Testnet RPC only for
-    // blockchain information.
-    const response = await fetch(
-      RPC_URL,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "getBlockNumber",
-          params: [],
-          id: 1,
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const payload =
-      await response.json();
-
-    return payload?.result ?? null;
-  } catch {
+/**
+ * Get the current block height from Nimiq Pay.
+ */
+export async function getBlockHeight(provider) {
+  if (!provider) {
     return null;
   }
+
+  if (typeof provider.getBlockNumber === "function") {
+    return provider.getBlockNumber();
+  }
+
+  return null;
 }
 
-// =====================================================
-// TESTNET WALLET INFORMATION
-// =====================================================
-
-export async function getTestnetWalletInfo(
-  address
-) {
-  const result =
-    await fetchNimiqBalanceDetailed(
-      address
-    );
+/**
+ * Combined wallet information.
+ */
+export async function getTestnetWalletInfo(targetAddress) {
+  const balanceInfo = await fetchNimiqBalanceDetailed(targetAddress);
 
   return {
-    address:
-      cleanAddress(address),
-    balance:
-      result.balance,
-    found:
-      result.found,
-    error:
-      result.error,
-    network: "testnet",
+    address: cleanAddress(targetAddress),
+    balance: balanceInfo.balance,
+    balanceNim: lunaToNim(balanceInfo.balance),
+    found: balanceInfo.found,
+    error: balanceInfo.error,
   };
 }
 
-// =====================================================
-// SEND NIM TRANSACTION
-// =====================================================
-
+/**
+ * Send NIM through Nimiq Pay.
+ *
+ * IMPORTANT:
+ * The first argument is the Nimiq Pay provider,
+ * NOT the wallet address.
+ */
 export async function sendNIMTransaction(
   provider,
-  {
-    recipient,
-    valueInNim,
-    data = "",
-  } = {}
+  { recipient, valueInNim, data = null }
 ) {
   if (!provider) {
-    throw new Error(
-      "Nimiq Pay wallet provider is not available."
-    );
+    throw new Error("Nimiq Pay provider is not available.");
   }
 
-  const cleanRecipient =
-    cleanAddress(recipient);
+  const cleanedRecipient = cleanAddress(recipient);
 
-  if (!cleanRecipient) {
-    throw new Error(
-      "A recipient Nimiq address is required."
-    );
+  if (!cleanedRecipient) {
+    throw new Error("A recipient wallet address is required.");
   }
 
-  const value =
-    nimToLuna(valueInNim);
+  const value = nimToLuna(valueInNim);
 
-  if (value <= 0) {
-    throw new Error(
-      "The transaction amount must be greater than 0 NIM."
-    );
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error("The NIM amount must be greater than zero.");
   }
 
-  try {
-    if (
-      data &&
-      typeof provider.sendBasicTransactionWithData ===
-        "function"
-    ) {
-      return await provider.sendBasicTransactionWithData(
-        {
-          recipient:
-            formatNimiqAddress(
-              cleanRecipient
-            ),
-          value,
-          data,
-        }
-      );
-    }
-
-    if (
-      typeof provider.sendBasicTransaction ===
-      "function"
-    ) {
-      return await provider.sendBasicTransaction(
-        {
-          recipient:
-            formatNimiqAddress(
-              cleanRecipient
-            ),
-          value,
-        }
-      );
-    }
-
-    throw new Error(
-      "The connected Nimiq Pay provider does not support NIM transactions."
-    );
-  } catch (error) {
-    throw new Error(
-      error?.message ||
-        "The Nimiq Testnet transaction failed.",
-      { cause: error }
-    );
+  if (data && typeof provider.sendBasicTransactionWithData === "function") {
+    return provider.sendBasicTransactionWithData({
+      recipient: cleanedRecipient,
+      value,
+      data,
+    });
   }
+
+  if (typeof provider.sendBasicTransaction === "function") {
+    return provider.sendBasicTransaction({
+      recipient: cleanedRecipient,
+      value,
+    });
+  }
+
+  throw new Error(
+    "This version of Nimiq Pay does not support NIM transactions."
+  );
 }
