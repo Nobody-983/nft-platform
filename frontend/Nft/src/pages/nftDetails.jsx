@@ -1,13 +1,11 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Heart, Loader2 } from "lucide-react";
 
 import { supabase } from "../lib/supabase";
 import {
-  initNimiq,
-  fetchNimiqBalance,
   sendNIMTransaction,
+  nimToLuna,
 } from "../lib/nimiq";
 
 import { useWallet } from "../context/walletContext";
@@ -17,8 +15,10 @@ export default function NFTDetails() {
   const navigate = useNavigate();
 
   const {
+    nimiq,
     walletAddress,
     isConnected,
+    balance,
     refreshBalance,
   } = useWallet();
 
@@ -39,7 +39,10 @@ export default function NFTDetails() {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase
+      const {
+        data,
+        error: fetchError,
+      } = await supabase
         .from("nfts")
         .select(`
           *,
@@ -74,9 +77,14 @@ export default function NFTDetails() {
 
       setListing(activeListing);
     } catch (err) {
-      console.error("Failed to fetch NFT:", err);
+      console.error(
+        "Failed to fetch NFT:",
+        err
+      );
+
       setError(
-        err?.message || "Failed to load NFT."
+        err?.message ||
+          "Failed to load NFT."
       );
     } finally {
       setLoading(false);
@@ -84,18 +92,41 @@ export default function NFTDetails() {
   }
 
   async function handleBuy() {
-    if (buying) return;
+    if (buying) {
+      return;
+    }
 
     try {
       setBuying(true);
       setError(null);
       setBuySuccess(false);
 
+      console.log("BUY 1: started");
+
+      // =================================================
+      // WALLET CHECK
+      // =================================================
+
       if (!isConnected || !walletAddress) {
         throw new Error(
           "Please connect your Nimiq wallet first."
         );
       }
+
+      if (!nimiq) {
+        throw new Error(
+          "Nimiq Pay wallet provider is unavailable."
+        );
+      }
+
+      console.log(
+        "BUY 2: wallet ready",
+        walletAddress
+      );
+
+      // =================================================
+      // LISTING CHECK
+      // =================================================
 
       if (!listing) {
         throw new Error(
@@ -109,23 +140,38 @@ export default function NFTDetails() {
         );
       }
 
-      const nftPrice = Number(listing.price);
+      const nftPrice = Number(
+        listing.price
+      );
 
-      if (!Number.isFinite(nftPrice) || nftPrice <= 0) {
+      if (
+        !Number.isFinite(nftPrice) ||
+        nftPrice <= 0
+      ) {
         throw new Error(
           "This NFT has an invalid price."
         );
       }
 
-      if (listing.currency !== "NIM") {
+      if (
+        String(listing.currency).toUpperCase() !==
+        "NIM"
+      ) {
         throw new Error(
           "Only NIM payments are currently supported."
         );
       }
 
-      /*
-       * Get the seller's wallet address.
-       */
+      console.log(
+        "BUY 3: listing valid",
+        nftPrice,
+        "NIM"
+      );
+
+      // =================================================
+      // GET SELLER WALLET
+      // =================================================
+
       const {
         data: sellerProfile,
         error: sellerError,
@@ -148,78 +194,142 @@ export default function NFTDetails() {
         );
       }
 
-      /*
-       * Prevent buying your own NFT.
-       */
-      if (
-        sellerWallet.replace(/\s+/g, "").toUpperCase() ===
-        walletAddress.replace(/\s+/g, "").toUpperCase()
-      ) {
+      console.log(
+        "BUY 4: seller wallet found",
+        sellerWallet
+      );
+
+      // =================================================
+      // PREVENT BUYING OWN NFT
+      // =================================================
+
+      const cleanSeller =
+        sellerWallet
+          .replace(/\s+/g, "")
+          .toUpperCase();
+
+      const cleanBuyer =
+        walletAddress
+          .replace(/\s+/g, "")
+          .toUpperCase();
+
+      if (cleanSeller === cleanBuyer) {
         throw new Error(
           "You cannot buy your own NFT."
         );
       }
 
-      /*
-       * Check buyer balance before opening Nimiq Pay.
-       */
-      const balance =
-        await fetchNimiqBalance(walletAddress);
+      // =================================================
+      // BALANCE CHECK
+      // =================================================
+      //
+      // IMPORTANT:
+      // balance from WalletContext is Luna.
+      // listing.price is NIM.
+      //
+      // Convert NIM -> Luna before comparing.
+      // =================================================
 
-      if (Number(balance) < nftPrice) {
+      const requiredLuna =
+        nimToLuna(nftPrice);
+
+      console.log(
+        "BUY 5: checking balance",
+        {
+          balanceLuna: balance,
+          requiredLuna,
+        }
+      );
+
+      if (
+        !Number.isFinite(Number(balance))
+      ) {
+        throw new Error(
+          "Unable to determine your wallet balance."
+        );
+      }
+
+      if (
+        Number(balance) < requiredLuna
+      ) {
         throw new Error(
           `Insufficient NIM balance. You need ${nftPrice} NIM.`
         );
       }
 
-      /*
-       * Initialize Nimiq Pay.
-       */
-      const provider = await initNimiq({
-        timeout: 10000,
-      });
+      console.log(
+        "BUY 6: balance sufficient"
+      );
 
-      if (!provider) {
+      // =================================================
+      // SEND PAYMENT
+      // =================================================
+
+      console.log(
+        "BUY 7: opening Nimiq Pay transaction"
+      );
+
+      const transactionResult =
+        await sendNIMTransaction(
+          nimiq,
+          {
+            recipient: sellerWallet,
+            valueInNim: nftPrice,
+          }
+        );
+
+      console.log(
+        "BUY 8: Nimiq returned",
+        transactionResult
+      );
+
+      // =================================================
+      // HANDLE PROVIDER ERROR
+      // =================================================
+
+      if (
+        transactionResult &&
+        typeof transactionResult === "object" &&
+        transactionResult.error
+      ) {
+        const providerError =
+          transactionResult.error;
+
         throw new Error(
-          "Nimiq wallet provider is unavailable."
+          providerError?.message ||
+            String(providerError) ||
+            "Nimiq transaction was rejected."
         );
       }
 
-      /*
-       * Send the NFT price to the seller.
-       *
-       * IMPORTANT:
-       * sendNIMTransaction() returns the transaction
-       * hash directly as a string.
-       */
-      const txHash = await sendNIMTransaction(
-        provider,
-        {
-          recipient: sellerWallet,
-          valueInNim: nftPrice,
-        }
-      );
+      // =================================================
+      // EXTRACT TRANSACTION HASH
+      // =================================================
 
-      if (!txHash || typeof txHash !== "string") {
+      const txHash =
+        typeof transactionResult === "string"
+          ? transactionResult
+          : transactionResult?.hash;
+
+      if (!txHash) {
         throw new Error(
           "Nimiq transaction was sent, but no transaction hash was returned."
         );
       }
 
       console.log(
-        "Nimiq transaction hash:",
+        "BUY 9: transaction hash",
         txHash
       );
 
-      /*
-       * Complete the marketplace purchase inside
-       * Supabase.
-       *
-       * The RPC handles:
-       * - marking the listing as sold
-       * - transferring NFT ownership
-       * - creating marketplace_sales
-       */
+      // =================================================
+      // COMPLETE MARKETPLACE PURCHASE
+      // =================================================
+
+      console.log(
+        "BUY 10: completing marketplace purchase"
+      );
+
       const {
         data: purchaseResult,
         error: purchaseError,
@@ -234,28 +344,34 @@ export default function NFTDetails() {
       if (purchaseError) {
         throw new Error(
           purchaseError.message ||
-            "Failed to complete NFT purchase."
+            "Payment succeeded, but the marketplace purchase could not be completed."
         );
       }
 
-      if (!purchaseResult?.success) {
+      if (
+        !purchaseResult?.success
+      ) {
         throw new Error(
-          "NFT purchase could not be completed."
+          purchaseResult?.message ||
+            "NFT purchase could not be completed."
         );
       }
+
+      console.log(
+        "BUY 11: purchase completed"
+      );
+
+      // =================================================
+      // SUCCESS
+      // =================================================
 
       setBuySuccess(true);
       setListing(null);
 
-      /*
-       * Refresh the buyer's wallet balance.
-       */
-      await refreshBalance(walletAddress);
+      await refreshBalance(
+        walletAddress
+      );
 
-      /*
-       * Reload NFT information so the UI reflects
-       * the new ownership/listing state.
-       */
       await fetchNFT();
     } catch (err) {
       console.error(
@@ -273,31 +389,49 @@ export default function NFTDetails() {
   }
 
   async function handleLike() {
-    if (!walletAddress) return;
+    if (!walletAddress) {
+      return;
+    }
 
     try {
-      const { data: existingLike } =
-        await supabase
-          .from("nft_likes")
-          .select("id")
-          .eq("nft_id", id)
-          .eq("user_id", walletAddress)
-          .maybeSingle();
+      const {
+        data: existingLike,
+        error: existingLikeError,
+      } = await supabase
+        .from("nft_likes")
+        .select("id")
+        .eq("nft_id", id)
+        .eq("user_id", walletAddress)
+        .maybeSingle();
+
+      if (existingLikeError) {
+        throw existingLikeError;
+      }
 
       if (existingLike) {
-        await supabase
-          .from("nft_likes")
-          .delete()
-          .eq("id", existingLike.id);
+        const { error } =
+          await supabase
+            .from("nft_likes")
+            .delete()
+            .eq("id", existingLike.id);
+
+        if (error) {
+          throw error;
+        }
 
         setLiked(false);
       } else {
-        await supabase
-          .from("nft_likes")
-          .insert({
-            nft_id: id,
-            user_id: walletAddress,
-          });
+        const { error } =
+          await supabase
+            .from("nft_likes")
+            .insert({
+              nft_id: id,
+              user_id: walletAddress,
+            });
+
+        if (error) {
+          throw error;
+        }
 
         setLiked(true);
       }
@@ -334,6 +468,7 @@ export default function NFTDetails() {
 
   return (
     <div className="mx-auto max-w-6xl p-6">
+
       <button
         onClick={() => navigate(-1)}
         className="mb-6 flex items-center gap-2"
@@ -343,6 +478,7 @@ export default function NFTDetails() {
       </button>
 
       <div className="grid gap-8 md:grid-cols-2">
+
         <div className="overflow-hidden rounded-2xl">
           <img
             src={nft.image_url}
@@ -352,7 +488,9 @@ export default function NFTDetails() {
         </div>
 
         <div>
+
           <div className="mb-4 flex items-start justify-between gap-4">
+
             <div>
               <p className="mb-2 text-sm opacity-60">
                 {nft.category || "NFT"}
@@ -369,9 +507,14 @@ export default function NFTDetails() {
             >
               <Heart
                 size={20}
-                fill={liked ? "currentColor" : "none"}
+                fill={
+                  liked
+                    ? "currentColor"
+                    : "none"
+                }
               />
             </button>
+
           </div>
 
           <p className="mb-6 opacity-70">
@@ -391,6 +534,7 @@ export default function NFTDetails() {
 
           {listing ? (
             <div className="rounded-2xl border p-6">
+
               <p className="text-sm opacity-60">
                 Current price
               </p>
@@ -419,12 +563,13 @@ export default function NFTDetails() {
                   )} NIM`
                 )}
               </button>
+
             </div>
           ) : (
             <div className="rounded-2xl border p-6">
               <p className="opacity-60">
-                This NFT is not currently listed
-                for sale.
+                This NFT is not currently
+                listed for sale.
               </p>
             </div>
           )}
@@ -440,6 +585,7 @@ export default function NFTDetails() {
               {error}
             </div>
           )}
+
         </div>
       </div>
     </div>
