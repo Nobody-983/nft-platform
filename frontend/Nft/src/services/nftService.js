@@ -16,27 +16,23 @@ const ALLOWED_EXTENSIONS = [
   "webp",
 ];
 
+// =========================================================
+// VALIDATE IMAGE
+// =========================================================
+
 function validateImage(file) {
   if (!file) {
-    throw new Error("STEP 0 FAILED: No image selected.");
-  }
-
-  if (!file.type) {
-    throw new Error(
-      "STEP 0 FAILED: Unable to determine the image type."
-    );
+    throw new Error("No image selected.");
   }
 
   if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
     throw new Error(
-      "STEP 0 FAILED: Only PNG, JPG, JPEG or WEBP images are allowed."
+      "Only PNG, JPG, JPEG or WEBP images are allowed."
     );
   }
 
   if (file.size > MAX_IMAGE_SIZE) {
-    throw new Error(
-      "STEP 0 FAILED: Image must be less than 5MB."
-    );
+    throw new Error("Image must be less than 5MB.");
   }
 
   const extension = file.name
@@ -44,83 +40,61 @@ function validateImage(file) {
     .pop()
     ?.toLowerCase();
 
-  if (
-    !extension ||
-    !ALLOWED_EXTENSIONS.includes(extension)
-  ) {
-    throw new Error(
-      "STEP 0 FAILED: Invalid image file extension."
-    );
+  if (!extension || !ALLOWED_EXTENSIONS.includes(extension)) {
+    throw new Error("Invalid image file extension.");
   }
 
   return extension;
 }
 
+// =========================================================
+// GET AUTHENTICATED USER
+// =========================================================
+
 async function getAuthenticatedUser() {
-  try {
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
 
-    if (error) {
-      console.error(
-        "STEP 1 - Supabase auth error:",
-        error
-      );
-
-      throw new Error(
-        `STEP 1 FAILED: Supabase authentication - ${
-          error.message || "Unknown authentication error"
-        }`
-      );
-    }
-
-    if (!user) {
-      throw new Error(
-        "STEP 1 FAILED: No authenticated Supabase user found."
-      );
-    }
-
-    return user;
-  } catch (error) {
-    console.error(
-      "STEP 1 - Authentication exception:",
-      error
-    );
-
-    if (
-      error?.message?.startsWith("STEP 1 FAILED")
-    ) {
-      throw error;
-    }
-
+  if (error) {
     throw new Error(
-      `STEP 1 FAILED: Could not reach Supabase authentication - ${
-        error?.message || "Failed to fetch"
-      }`
+      `Authentication failed: ${error.message}`
     );
   }
+
+  if (!user) {
+    throw new Error(
+      "No authenticated Supabase user found."
+    );
+  }
+
+  return user;
 }
 
-function generateUUID() {
-  if (
+// =========================================================
+// GENERATE FILE NAME
+// =========================================================
+
+function generateFileName(extension) {
+  const id =
     typeof crypto !== "undefined" &&
     typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
-  }
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()
+          .toString(16)
+          .slice(2)}`;
 
-  return `${Date.now()}-${Math.random()
-    .toString(16)
-    .slice(2)}`;
+  return `${id}.${extension}`;
 }
+
+// =========================================================
+// UPLOAD NFT IMAGE
+// =========================================================
 
 export async function uploadNFTImage(file, userId) {
   if (!userId) {
-    throw new Error(
-      "STEP 1 FAILED: User is not authenticated."
-    );
+    throw new Error("User is not authenticated.");
   }
 
   const extension = validateImage(file);
@@ -129,15 +103,23 @@ export async function uploadNFTImage(file, userId) {
 
   if (authUser.id !== userId) {
     throw new Error(
-      "STEP 1 FAILED: Authenticated user does not match NFT creator."
+      "Authenticated user does not match NFT creator."
     );
   }
 
-  const fileName = `${generateUUID()}.${extension}`;
+  const fileName = generateFileName(extension);
   const filePath = `${userId}/${fileName}`;
 
+  console.log("NFT IMAGE UPLOAD");
+  console.log("Bucket:", BUCKET_NAME);
+  console.log("Path:", filePath);
+  console.log("User:", authUser.id);
+  console.log("File:", file.name);
+  console.log("Size:", file.size);
+  console.log("Type:", file.type);
+
   try {
-    const { error } = await supabase.storage
+    const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(filePath, file, {
         cacheControl: "31536000",
@@ -147,86 +129,67 @@ export async function uploadNFTImage(file, userId) {
 
     if (error) {
       console.error(
-        "STEP 2 - Supabase storage error:",
+        "Supabase Storage upload error:",
         error
       );
 
-      const details = [
-        error?.message,
-        error?.statusCode,
-        error?.status,
-        error?.error,
-        error?.details,
-        error?.hint,
-      ]
-        .filter(Boolean)
-        .join(" | ");
-
       throw new Error(
-        `STEP 2 FAILED: Image upload - ${
-          details || "Unknown storage error"
-        }`
-      );
-    }
-  } catch (error) {
-    console.error(
-      "STEP 2 - Image upload exception:",
-      error
-    );
-
-    if (
-      error?.message?.startsWith("STEP 2 FAILED")
-    ) {
-      throw error;
-    }
-
-    const details = [
-      error?.name,
-      error?.message,
-      error?.statusCode,
-      error?.status,
-      error?.error,
-      error?.details,
-      error?.hint,
-    ]
-      .filter(Boolean)
-      .join(" | ");
-
-    throw new Error(
-      `STEP 2 FAILED: Could not reach Supabase Storage - ${
-        details || "Failed to fetch"
-      }`
-    );
-  }
-
-  try {
-    const { data } = supabase.storage
-      .from(BUCKET_NAME)
-      .getPublicUrl(filePath);
-
-    if (!data?.publicUrl) {
-      throw new Error(
-        "Unable to generate public image URL."
+        error.message ||
+          error.details ||
+          error.hint ||
+          "Unable to upload image."
       );
     }
 
-    return {
-      publicUrl: data.publicUrl,
-      filePath,
-    };
+    console.log(
+      "NFT image uploaded successfully:",
+      data
+    );
   } catch (error) {
     console.error(
-      "STEP 2 - Public URL error:",
+      "NFT image upload failed:",
       error
     );
 
+    if (error instanceof TypeError) {
+      throw new Error(
+        "Could not connect to Supabase Storage. Check your Supabase URL, key, or network connection."
+      );
+    }
+
+    throw error;
+  }
+
+  // =======================================================
+  // GET PUBLIC URL
+  // =======================================================
+
+  const {
+    data: publicUrlData,
+  } = supabase.storage
+    .from(BUCKET_NAME)
+    .getPublicUrl(filePath);
+
+  if (!publicUrlData?.publicUrl) {
     throw new Error(
-      `STEP 2 FAILED: Could not generate image URL - ${
-        error?.message || "Unknown error"
-      }`
+      "Image uploaded but a public URL could not be generated."
     );
   }
+
+  console.log(
+    "NFT image URL:",
+    publicUrlData.publicUrl
+  );
+
+  return {
+    publicUrl: publicUrlData.publicUrl,
+    filePath,
+  };
 }
+
+// =========================================================
+// DELETE NFT IMAGE
+// =========================================================
 
 export async function deleteNFTImage(filePath) {
   if (!filePath) {
@@ -246,11 +209,6 @@ export async function deleteNFTImage(filePath) {
     .remove([filePath]);
 
   if (error) {
-    console.error(
-      "NFT image deletion error:",
-      error
-    );
-
     throw new Error(
       error.message ||
         error.details ||
@@ -261,6 +219,10 @@ export async function deleteNFTImage(filePath) {
 
   return true;
 }
+
+// =========================================================
+// CREATE NFT
+// =========================================================
 
 export async function createNFT({
   creator_id,
@@ -273,25 +235,25 @@ export async function createNFT({
 }) {
   if (!creator_id) {
     throw new Error(
-      "STEP 3 FAILED: NFT creator is missing."
+      "NFT creator is missing."
     );
   }
 
   if (!name?.trim()) {
     throw new Error(
-      "STEP 3 FAILED: NFT name is required."
+      "NFT name is required."
     );
   }
 
   if (!image_url) {
     throw new Error(
-      "STEP 3 FAILED: NFT image is missing."
+      "NFT image is missing."
     );
   }
 
   if (!category) {
     throw new Error(
-      "STEP 3 FAILED: NFT category is required."
+      "NFT category is required."
     );
   }
 
@@ -304,7 +266,7 @@ export async function createNFT({
     numericPrice <= 0
   ) {
     throw new Error(
-      "STEP 3 FAILED: NFT price must be greater than zero."
+      "NFT price must be greater than zero."
     );
   }
 
@@ -312,7 +274,7 @@ export async function createNFT({
 
   if (authUser.id !== creator_id) {
     throw new Error(
-      "STEP 3 FAILED: You are not authorized to create this NFT."
+      "You are not authorized to create this NFT."
     );
   }
 
@@ -322,56 +284,52 @@ export async function createNFT({
       error,
     } = await supabase
       .from("nfts")
-      .insert([
-        {
-          creator_id: authUser.id,
-          name: name.trim(),
-          description: description?.trim() || "",
-          image_url,
-          category,
-          price: numericPrice,
-          currency: currency || "NIM",
-        },
-      ])
+      .insert({
+        creator_id: authUser.id,
+        name: name.trim(),
+        description: description?.trim() || "",
+        image_url,
+        category,
+        price: numericPrice,
+        currency: currency || "NIM",
+      })
       .select()
       .single();
 
     if (error) {
       console.error(
-        "STEP 3 - Supabase NFT creation error:",
+        "NFT database insert error:",
         error
       );
 
       throw new Error(
-        `STEP 3 FAILED: NFT database insert - ${
-          error.message ||
+        error.message ||
           error.details ||
           error.hint ||
-          "Unknown database error"
-        }`
+          "Unable to create NFT."
       );
     }
 
     return data;
   } catch (error) {
     console.error(
-      "STEP 3 - NFT creation exception:",
+      "NFT creation failed:",
       error
     );
 
-    if (
-      error?.message?.startsWith("STEP 3 FAILED")
-    ) {
-      throw error;
+    if (error instanceof TypeError) {
+      throw new Error(
+        "Could not connect to Supabase database."
+      );
     }
 
-    throw new Error(
-      `STEP 3 FAILED: Could not reach Supabase database - ${
-        error?.message || "Failed to fetch"
-      }`
-    );
+    throw error;
   }
 }
+
+// =========================================================
+// GET STORAGE PATH FROM URL
+// =========================================================
 
 function getStoragePathFromUrl(imageUrl) {
   if (!imageUrl) {
@@ -384,16 +342,15 @@ function getStoragePathFromUrl(imageUrl) {
     const marker =
       `/storage/v1/object/public/${BUCKET_NAME}/`;
 
-    const markerIndex =
-      url.pathname.indexOf(marker);
+    const index = url.pathname.indexOf(marker);
 
-    if (markerIndex === -1) {
+    if (index === -1) {
       return null;
     }
 
     return decodeURIComponent(
       url.pathname.substring(
-        markerIndex + marker.length
+        index + marker.length
       )
     );
   } catch (error) {
@@ -405,6 +362,10 @@ function getStoragePathFromUrl(imageUrl) {
     return null;
   }
 }
+
+// =========================================================
+// DELETE NFT
+// =========================================================
 
 export async function deleteNFT(nft) {
   if (!nft?.id) {
@@ -430,11 +391,6 @@ export async function deleteNFT(nft) {
     .eq("creator_id", authUser.id);
 
   if (error) {
-    console.error(
-      "NFT database deletion error:",
-      error
-    );
-
     throw new Error(
       error.message ||
         error.details ||
@@ -443,8 +399,9 @@ export async function deleteNFT(nft) {
     );
   }
 
-  const filePath =
-    getStoragePathFromUrl(nft.image_url);
+  const filePath = getStoragePathFromUrl(
+    nft.image_url
+  );
 
   if (filePath) {
     try {
