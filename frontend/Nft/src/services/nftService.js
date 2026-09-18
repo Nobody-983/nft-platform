@@ -137,13 +137,9 @@ export async function uploadNFTImage(file, userId) {
   const filePath = `${userId}/${fileName}`;
 
   try {
-    const fileBuffer = await file.arrayBuffer();
-
-    const {
-      error,
-    } = await supabase.storage
+    const { error } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(filePath, fileBuffer, {
+      .upload(filePath, file, {
         cacheControl: "31536000",
         contentType: file.type,
         upsert: false,
