@@ -17,7 +17,17 @@ import {
   shortenAddress,
   cleanAddress,
   sendNIMTransaction,
+  formatNim,
+  lunaToNim,
+  getMaxSendableNim,
+  isValidNimiqAddress,
 } from "../lib/nimiq";
+import {
+  NIMIQ_NETWORK_LABEL,
+  PAY_TESTNET_HINT,
+  TESTNET_FAUCET_URL,
+  getTestnetExplorerTxUrl,
+} from "../lib/nimiq-network";
 
 function Wallet() {
   const {
@@ -32,6 +42,8 @@ function Wallet() {
     consensus,
     blockNumber,
     refreshBalance,
+    nimiq,
+    networkHint,
   } = useWallet();
 
   const [copied, setCopied] = useState(false);
@@ -117,8 +129,13 @@ function Wallet() {
       return;
     }
 
+    if (!nimiq) {
+      setError(networkHint || PAY_TESTNET_HINT);
+      return;
+    }
+
     const cleanRecip = cleanAddress(sendRecipient);
-    if (!cleanRecip || !cleanRecip.startsWith("NQ")) {
+    if (!isValidNimiqAddress(cleanRecip)) {
       setError("Please enter a valid Nimiq recipient address starting with NQ.");
       return;
     }
@@ -129,7 +146,8 @@ function Wallet() {
       return;
     }
 
-    if (numAmount > balance) {
+    const availableNim = lunaToNim(balance);
+    if (numAmount > availableNim) {
       setError("Insufficient testnet NIM balance.");
       return;
     }
@@ -137,10 +155,10 @@ function Wallet() {
     setSending(true);
 
     try {
-      const txHash = await sendNIMTransaction(walletAddress, {
+      const txHash = await sendNIMTransaction(nimiq, {
         recipient: cleanRecip,
         valueInNim: numAmount,
-        data: sendMessage.trim(),
+        data: sendMessage.trim() || null,
       });
 
       setSendTxHash(txHash || "Transaction submitted");
@@ -178,7 +196,7 @@ function Wallet() {
           </span>
         </div>
         <p className="mt-1 text-sm text-gray-400">
-          Manage your Nimiq testnet wallet, balance and transactions.
+          Manage your {NIMIQ_NETWORK_LABEL} wallet, balance and transactions.
         </p>
       </div>
 
@@ -215,9 +233,12 @@ function Wallet() {
           <div className="flex items-start gap-3">
             <div className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-yellow-400" />
             <div>
-              <p className="text-sm font-medium text-yellow-300">Nimiq Testnet</p>
+              <p className="text-sm font-medium text-yellow-300">
+                {NIMIQ_NETWORK_LABEL} only
+              </p>
               <p className="mt-1 text-xs text-yellow-400/70">
-                You are using testnet NIM. Testnet tokens have no real-world value.
+                Mainnet seed gateways are disabled. Testnet NIM has no real-world
+                value. {PAY_TESTNET_HINT}
               </p>
             </div>
           </div>
@@ -258,10 +279,7 @@ function Wallet() {
           <div className="mt-5">
             <h2 className="text-4xl font-bold tracking-tight">
               {walletAddress
-                ? `${Number(balance || 0).toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 5,
-                  })} NIM`
+                ? `${formatNim(balance, 5)} NIM`
                 : "0.00 NIM"}
             </h2>
             <p className="mt-2 text-sm text-gray-400">
@@ -446,7 +464,7 @@ function Wallet() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Network</p>
-                <p className="mt-1 text-sm text-gray-300">Nimiq Testnet</p>
+                <p className="mt-1 text-sm text-gray-300">{NIMIQ_NETWORK_LABEL}</p>
               </div>
 
               {blockNumber !== null && blockNumber !== undefined && (
@@ -519,6 +537,15 @@ function Wallet() {
                 )}
               </button>
 
+              <a
+                href={TESTNET_FAUCET_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="flex w-full items-center justify-center rounded-xl border border-white/10 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/[0.04]"
+              >
+                Get free testnet NIM
+              </a>
+
               <p className="text-center text-[11px] text-gray-500">
                 Only send Nimiq testnet NIM to this address.
               </p>
@@ -554,9 +581,14 @@ function Wallet() {
                 <p className="text-xs text-gray-400">
                   Your testnet transaction was submitted successfully.
                 </p>
-                <p className="break-all rounded-xl bg-black/30 p-3 font-mono text-xs text-gray-400">
+                <a
+                  href={getTestnetExplorerTxUrl(sendTxHash)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block break-all rounded-xl bg-black/30 p-3 font-mono text-xs text-purple-300 underline-offset-2 hover:underline"
+                >
                   {sendTxHash}
-                </p>
+                </a>
                 <button
                   type="button"
                   onClick={() => setShowSendModal(false)}
@@ -585,7 +617,7 @@ function Wallet() {
                   <div className="mb-1 flex items-center justify-between">
                     <label className="text-xs text-gray-400">Amount (NIM)</label>
                     <span className="text-xs text-gray-500">
-                      Balance: {Number(balance || 0).toFixed(2)} NIM
+                      Balance: {formatNim(balance, 2)} NIM
                     </span>
                   </div>
 
@@ -602,7 +634,9 @@ function Wallet() {
                     />
                     <button
                       type="button"
-                      onClick={() => setSendAmount(String(Number(balance || 0)))}
+                      onClick={() =>
+                        setSendAmount(String(getMaxSendableNim(balance)))
+                      }
                       className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-semibold text-purple-400 transition hover:text-purple-300"
                     >
                       MAX

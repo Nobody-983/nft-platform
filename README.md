@@ -2,7 +2,9 @@
 
 ### Discover · Create · Trade
 
-A Nimiq-powered NFT marketplace where users can discover digital collectibles, create NFTs, and buy or sell them using **NIM through Nimiq Pay**.
+A Nimiq-powered NFT marketplace where users can discover digital collectibles, create NFTs, and buy or sell them using **testnet NIM through Nimiq Pay**.
+
+This app is **Nimiq Testnet only**. It never connects to mainnet seed gateways.
 
 Built for the Nimiq ecosystem with a focus on simple wallet-based identity, real blockchain transactions, and an accessible marketplace experience.
 
@@ -100,9 +102,9 @@ Users can list NFTs they own and cancel active listings.
 
 ---
 
-### 💰 NIM Payments
+### 💰 Testnet NIM Payments
 
-NFT purchases use **NIM** through Nimiq Pay.
+NFT purchases use **testnet NIM** through Nimiq Pay. Mainnet is not used.
 
 The application:
 
@@ -153,7 +155,11 @@ The application uses Nimiq Pay for wallet interactions including:
 * Consensus information
 * Block information
 
-The project is designed to operate with the **Nimiq Testnet** during development and testing.
+The application is **Nimiq Testnet only**.
+
+Balance reads use `@nimiq/core` on `testalbatross` with **testnet seed nodes only**. The default `@nimiq/core` mainnet seed list (`aurora.seed.nimiq.com`, `catalyst.seed.nimiq.network`, and the rest) is never used.
+
+Transactions go through Nimiq Pay. Switch the wallet to Testnet first: long-press Settings for 10 seconds, then choose Testnet.
 
 ---
 
@@ -321,12 +327,15 @@ The application is primarily designed to be tested through **Nimiq Pay**.
 For wallet functionality:
 
 1. Open the application inside Nimiq Pay.
-2. Connect your wallet.
-3. Approve the wallet connection.
-4. Explore the marketplace.
-5. Create or list an NFT.
-6. Test NIM transactions using the testnet.
-7. Verify the resulting marketplace state.
+2. Long-press Settings for 10 seconds and switch to **Testnet**.
+3. Connect your wallet.
+4. Approve the wallet connection.
+5. Explore the marketplace.
+6. Create or list an NFT.
+7. Send or buy with **testnet NIM** only.
+8. Verify the resulting marketplace state.
+
+Do not send mainnet NIM to marketplace addresses.
 
 ---
 

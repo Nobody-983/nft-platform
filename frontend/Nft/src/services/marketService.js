@@ -64,7 +64,6 @@ async function getCurrentUser() {
 export async function createListing({
   nft_id,
   price,
-  currency = DEFAULT_CURRENCY,
 }) {
   if (!nft_id) {
     throw new Error("NFT ID is required.");
@@ -134,7 +133,7 @@ export async function createListing({
       nft_id,
       seller_id: user.id,
       price: numericPrice,
-      currency: currency?.trim() || DEFAULT_CURRENCY,
+      currency: DEFAULT_CURRENCY,
       status: ACTIVE_STATUS,
     })
     .select()

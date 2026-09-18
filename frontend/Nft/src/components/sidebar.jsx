@@ -117,8 +117,8 @@ function Sidebar({ isOpen, setIsOpen }) {
               </h1>
 
               {isOpen && (
-                <p className="mt-1 whitespace-nowrap text-[11px] font-medium text-gray-500">
-                  NFT ecosystem
+                <p className="mt-1 whitespace-nowrap text-[11px] font-medium text-yellow-400/80">
+                  Testnet NFT
                 </p>
               )}
             </div>

@@ -384,7 +384,7 @@ function CreateNFT() {
         image_url: uploadedImage.publicUrl,
         category: form.category,
         price: numericPrice,
-        currency: form.currency,
+        currency: "NIM",
       });
 
       if (!newNFT) {
@@ -502,7 +502,7 @@ function CreateNFT() {
       const newListing = await createListing({
         nft_id: listingNFT.id,
         price: numericPrice,
-        currency: listingForm.currency,
+        currency: "NIM",
       });
 
       if (!newListing) {
@@ -906,11 +906,7 @@ function CreateNFT() {
                   className="w-full rounded-xl border border-white/10 bg-[#11111a] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500"
                 >
                   <option value="NIM">
-                    NIM
-                  </option>
-
-                  <option value="USD">
-                    USD
+                    Testnet NIM
                   </option>
                 </select>
               </div>
@@ -1210,11 +1206,7 @@ function CreateNFT() {
                   className="w-full rounded-xl border border-white/10 bg-[#0b0b12] px-4 py-3 text-sm text-white outline-none transition focus:border-purple-500 disabled:opacity-60"
                 >
                   <option value="NIM">
-                    NIM
-                  </option>
-
-                  <option value="USD">
-                    USD
+                    Testnet NIM
                   </option>
                 </select>
               </div>

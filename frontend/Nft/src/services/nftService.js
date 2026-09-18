@@ -251,7 +251,6 @@ export async function createNFT({
   image_url,
   category,
   price,
-  currency,
 }) {
   try {
     const user = await getAuthenticatedUser();
@@ -268,7 +267,7 @@ export async function createNFT({
         image_url,
         category,
         price,
-        currency,
+        currency: "NIM",
       })
       .select()
       .single();

@@ -73,7 +73,7 @@ function Auth() {
               </p>
 
               <p className="text-xs text-white/35">
-                Digital marketplace
+                Testnet marketplace
               </p>
             </div>
           </motion.div>
@@ -122,7 +122,8 @@ function Auth() {
                 <p className="mt-6 max-w-2xl text-base leading-7 text-white/50 sm:text-lg lg:text-xl lg:leading-8">
                   Discover unique digital collectibles,
                   create your own NFTs, and trade them
-                  directly using NIM through Nimiq Pay.
+                  with testnet NIM through Nimiq Pay.
+                  This marketplace never uses mainnet.
                 </p>
               </div>
 
@@ -165,9 +166,9 @@ function Auth() {
                           </h2>
 
                           <p className="mt-1 max-w-sm text-sm leading-5 text-white/35">
-                            Connect your Nimiq wallet to
-                            create your account and start
-                            exploring.
+                            Switch Nimiq Pay to Testnet,
+                            then connect your wallet to
+                            enter the marketplace.
                           </p>
                         </div>
                       </div>
@@ -220,9 +221,10 @@ function Auth() {
                         </p>
 
                         <p className="mt-1 text-[11px] leading-5 text-white/30">
-                          Your wallet is your account. Private
-                          keys stay inside Nimiq Pay and
-                          transactions require your approval.
+                          Long-press Settings in Nimiq Pay for
+                          10 seconds and choose Testnet. All
+                          balances, mints, and trades stay on
+                          TestAlbatross — no mainnet gateways.
                         </p>
                       </div>
                     </div>
@@ -248,7 +250,7 @@ function Auth() {
                 <Feature
                   icon={Zap}
                   title="Trade"
-                  description="Buy and sell with NIM."
+                  description="Buy and sell with testnet NIM."
                 />
               </div>
 
@@ -417,7 +419,7 @@ function Auth() {
                       </p>
 
                       <p className="text-sm font-semibold">
-                        Trade with NIM
+                        Trade with testnet NIM
                       </p>
                     </div>
                   </div>

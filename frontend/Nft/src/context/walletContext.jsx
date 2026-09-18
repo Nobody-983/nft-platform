@@ -16,6 +16,11 @@ import {
 } from "../lib/nimiq";
 
 import {
+  NIMIQ_NETWORK_LABEL,
+  PAY_TESTNET_HINT,
+} from "../lib/nimiq-network";
+
+import {
   loginWithWallet,
   logoutUser,
 } from "../services/auth";
@@ -126,7 +131,7 @@ export function WalletProvider({ children }) {
         if (result?.found === false) {
           setBalanceWarning(
             result?.error ||
-              "The wallet address could not be resolved by the Nimiq Testnet balance service."
+              "The wallet address could not be resolved on Nimiq Testnet. Confirm Nimiq Pay is switched to Testnet."
           );
         } else {
           setBalanceWarning(null);
@@ -181,7 +186,7 @@ export function WalletProvider({ children }) {
       } catch (err) {
         setBalanceWarning(
           err?.message ||
-            "Unable to retrieve the Nimiq Testnet network status."
+            "Unable to retrieve Nimiq Testnet network status."
         );
       }
     },
@@ -299,7 +304,7 @@ export function WalletProvider({ children }) {
 
         let friendlyMessage =
           err?.message ||
-          "Failed to connect Nimiq wallet.";
+          "Failed to connect Nimiq wallet. " + PAY_TESTNET_HINT;
 
         if (
           message.includes("reject") ||
@@ -430,6 +435,9 @@ export function WalletProvider({ children }) {
     blockNumber,
 
     error,
+
+    networkLabel: NIMIQ_NETWORK_LABEL,
+    networkHint: PAY_TESTNET_HINT,
 
     connectWallet,
     disconnectWallet,

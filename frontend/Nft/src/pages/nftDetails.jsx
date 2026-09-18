@@ -7,6 +7,7 @@ import {
   sendNIMTransaction,
   nimToLuna,
 } from "../lib/nimiq";
+import { PAY_TESTNET_HINT } from "../lib/nimiq-network";
 
 import { useWallet } from "../context/walletContext";
 
@@ -109,13 +110,14 @@ export default function NFTDetails() {
 
       if (!isConnected || !walletAddress) {
         throw new Error(
-          "Please connect your Nimiq wallet first."
+          "Please connect your Nimiq Testnet wallet first. " +
+            PAY_TESTNET_HINT
         );
       }
 
       if (!nimiq) {
         throw new Error(
-          "Nimiq Pay wallet provider is unavailable."
+          "Nimiq Pay is unavailable. Open this app inside Nimiq Pay on Testnet."
         );
       }
 
@@ -158,7 +160,7 @@ export default function NFTDetails() {
         "NIM"
       ) {
         throw new Error(
-          "Only NIM payments are currently supported."
+          "Only testnet NIM payments are supported."
         );
       }
 
@@ -253,7 +255,7 @@ export default function NFTDetails() {
         Number(balance) < requiredLuna
       ) {
         throw new Error(
-          `Insufficient NIM balance. You need ${nftPrice} NIM.`
+          `Insufficient testnet NIM. You need ${nftPrice} NIM.`
         );
       }
 
@@ -560,7 +562,7 @@ export default function NFTDetails() {
                 ) : (
                   `Buy for ${Number(
                     listing.price
-                  )} NIM`
+                  )} testnet NIM`
                 )}
               </button>
 
