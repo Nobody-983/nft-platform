@@ -31,7 +31,9 @@ function validateImage(file) {
   }
 
   if (file.size > MAX_IMAGE_SIZE) {
-    throw new Error("IMAGE ERROR: Image must be smaller than 5MB.");
+    throw new Error(
+      "IMAGE ERROR: Image must be smaller than 5MB."
+    );
   }
 
   const extension = file.name
@@ -47,7 +49,7 @@ function validateImage(file) {
 }
 
 // ---------------------------------------------
-// Get authenticated Supabase user
+// Get authenticated user
 // ---------------------------------------------
 async function getAuthenticatedUser() {
   const { data, error } = await supabase.auth.getSession();
@@ -76,7 +78,7 @@ async function getAuthenticatedUser() {
 }
 
 // ---------------------------------------------
-// Generate unique file name
+// Generate unique filename
 // ---------------------------------------------
 function generateFileName(file) {
   const extension = file.name
@@ -84,9 +86,7 @@ function generateFileName(file) {
     .pop()
     .toLowerCase();
 
-  const randomPart = crypto.randomUUID();
-
-  return `${randomPart}.${extension}`;
+  return `${crypto.randomUUID()}.${extension}`;
 }
 
 // ---------------------------------------------
@@ -101,7 +101,6 @@ export async function uploadNFTImage(file, userId) {
     );
   }
 
-  // Make sure Supabase authentication is working
   const user = await getAuthenticatedUser();
 
   if (user.id !== userId) {
@@ -111,25 +110,59 @@ export async function uploadNFTImage(file, userId) {
   }
 
   const fileName = generateFileName(file);
-
   const filePath = `${userId}/${fileName}`;
 
   // ---------------------------------------------
-  // NETWORK TEST
+  // AUTHENTICATED SUPABASE NETWORK TEST
   // ---------------------------------------------
   try {
+    const {
+      data: sessionData,
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      throw new Error(
+        `SESSION CHECK FAILED: ${sessionError.message}`
+      );
+    }
+
+    const accessToken =
+      sessionData?.session?.access_token;
+
+    if (!accessToken) {
+      throw new Error(
+        "SESSION CHECK FAILED: No access token available."
+      );
+    }
+
     const response = await fetch(
-      "https://asjwpgomjnpvhkjajvlc.supabase.co/storage/v1/bucket"
+      "https://asjwpgomjnpvhkjajvlc.supabase.co/storage/v1/bucket",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          apikey:
+            import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+      }
     );
 
     const responseText = await response.text();
 
+    if (!response.ok) {
+      throw new Error(
+        `SUPABASE NETWORK TEST: status=${response.status}, response=${responseText}`
+      );
+    }
+
     throw new Error(
-      `SUPABASE NETWORK TEST: status=${response.status}, response=${responseText}`
+      `SUPABASE NETWORK TEST SUCCESS: ${responseText}`
     );
   } catch (error) {
     throw new Error(
-      `SUPABASE NETWORK TEST FAILED: ${error?.message || String(error)}`
+      error?.message ||
+        `SUPABASE NETWORK TEST FAILED: ${String(error)}`
     );
   }
 
@@ -137,7 +170,10 @@ export async function uploadNFTImage(file, userId) {
   // STORAGE UPLOAD
   // ---------------------------------------------
   try {
-    const { data, error } = await supabase.storage
+    const {
+      data,
+      error,
+    } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(filePath, file, {
         cacheControl: "31536000",
@@ -158,9 +194,11 @@ export async function uploadNFTImage(file, userId) {
     }
 
     // ---------------------------------------------
-    // PUBLIC URL
+    // GET PUBLIC URL
     // ---------------------------------------------
-    const { data: publicUrlData } = supabase.storage
+    const {
+      data: publicUrlData,
+    } = supabase.storage
       .from(BUCKET_NAME)
       .getPublicUrl(filePath);
 
@@ -209,7 +247,7 @@ export async function deleteNFTImage(filePath) {
 }
 
 // ---------------------------------------------
-// Create NFT database record
+// Create NFT
 // ---------------------------------------------
 export async function createNFT({
   name,
@@ -222,7 +260,10 @@ export async function createNFT({
   try {
     const user = await getAuthenticatedUser();
 
-    const { data, error } = await supabase
+    const {
+      data,
+      error,
+    } = await supabase
       .from("nfts")
       .insert({
         creator_id: user.id,
@@ -262,7 +303,9 @@ export async function createNFT({
 // ---------------------------------------------
 export async function deleteNFT(nft) {
   if (!nft?.id) {
-    throw new Error("DELETE NFT FAILED: Missing NFT ID.");
+    throw new Error(
+      "DELETE NFT FAILED: Missing NFT ID."
+    );
   }
 
   try {
@@ -274,8 +317,9 @@ export async function deleteNFT(nft) {
       );
     }
 
-    // Delete database record
-    const { error: dbError } = await supabase
+    const {
+      error: dbError,
+    } = await supabase
       .from("nfts")
       .delete()
       .eq("id", nft.id);
@@ -286,7 +330,6 @@ export async function deleteNFT(nft) {
       );
     }
 
-    // Delete image if path exists
     if (nft.image_path) {
       await deleteNFTImage(nft.image_path);
     }
